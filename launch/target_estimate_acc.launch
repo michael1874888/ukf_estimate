@@ -1,0 +1,39 @@
+<launch>
+   <node pkg="ukf_estimate" name="target_estimate_acc" type="target_estimate_acc" output="screen" >
+
+     <param name="topic_box" value="/YOLO/box" />
+
+     <param name="P_init_0" value="800" />
+     <param name="P_init_1" value="800" />
+     <param name="P_init_2" value="800" />
+	 <param name="P_init_3" value="800" />
+     <param name="P_init_4" value="800" />
+     <param name="P_init_5" value="800" />
+	 <param name="P_init_6" value="800" />
+     <param name="P_init_7" value="800" />
+	 <param name="P_init_9" value="800" />
+     <param name="P_init_10" value="800" />
+     <param name="P_init_11" value="800" />
+
+	 <param name="measurement_noise_0" value="10" />
+     <param name="measurement_noise_1" value="10" />
+     <param name="measurement_noise_2" value="10000" />
+	 <param name="measurement_noise_3" value="0.0001" />
+     <param name="measurement_noise_4" value="0.0001" />
+     <param name="measurement_noise_5" value="0.0001" />
+
+	 <param name="process_noise_0" value="0.0008" />
+     <param name="process_noise_1" value="0.0008" />
+     <param name="process_noise_2" value="0.0005" />
+	 <param name="process_noise_3" value="0.05" />
+     <param name="process_noise_4" value="0.05" />
+     <param name="process_noise_5" value="0.05" />
+	 <param name="process_noise_6" value="0.5" />
+     <param name="process_noise_7" value="0.5" />
+     <param name="process_noise_8" value="0.5" />
+	 <param name="process_noise_6" value="1" />
+     <param name="process_noise_7" value="1" />
+     <param name="process_noise_8" value="1" />
+   </node>
+
+</launch>

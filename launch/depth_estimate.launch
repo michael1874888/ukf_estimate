@@ -1,0 +1,18 @@
+<launch>
+   <node pkg="ukf_estimate" name="depth_estimate" type="depth_estimate" output="screen" >
+
+     <param name="topic_box" value="/YOLO" />
+
+     <param name="P_init_0" value="0.1" />
+     <param name="P_init_1" value="0.1" />
+     <param name="P_init_2" value="0.1" />
+
+	 <param name="measurement_noise_0" value="10" />
+     <param name="measurement_noise_1" value="10" />
+
+	 <param name="process_noise_0" value="0.0005" />
+     <param name="process_noise_1" value="0.0005" />
+     <param name="process_noise_2" value="0.000005" />
+   </node>
+
+</launch>

@@ -1,0 +1,3 @@
+geometry_msgs/Vector3 feature
+geometry_msgs/Vector3 target_pose
+geometry_msgs/Vector3 target_vel
