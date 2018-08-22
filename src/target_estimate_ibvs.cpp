@@ -632,6 +632,7 @@ void ibvs(vir& vir, std_msgs::Float32MultiArray box, geometry_msgs::PoseStamped&
 	Eigen::Vector3d errv_cam, errw_cam;
 	Eigen::Vector3d errv_global, errw_global;
 	Eigen::Vector3d errv_body;//, errv_global_;
+	Eigen::Vector3d vq_cam, vq_global;
     float ux, uy, uz, uroll;
     float ux_trans, uy_trans;
     float box_x_center, box_y_center;
@@ -639,6 +640,9 @@ void ibvs(vir& vir, std_msgs::Float32MultiArray box, geometry_msgs::PoseStamped&
     float depth_Z;
     float fov_x;
     float box_width, box_height;
+
+	vq_cam << x(6), x(7), x(8);
+	vq_global = rot_c2g*vq_cam;
 
 	box_width = box.data[4]*image_width;
 	box_height = box.data[3]*image_height;
@@ -679,7 +683,7 @@ void ibvs(vir& vir, std_msgs::Float32MultiArray box, geometry_msgs::PoseStamped&
 	//cout << "\nerrv_cam\n" <<errv_cam << "\nerrw_cam\n" <<errw_cam;
 	//cout << "\nerrv_body\n" <<errv_body;
 	cout << "\nerrv_global\n" <<errv_global << "\nerrw_global\n" <<errw_global;
-	cout << "\ntarget_gvel\n" <<target_gvel;
+	cout << "\ntarget_gvel\n" <<vq_global;
 	cout << "\nux: " <<err_ux<< " uy: " <<err_uy<< " uz: " <<err_uz;
 
     err_ux_sum = err_ux_sum + err_ux;
@@ -708,12 +712,12 @@ void ibvs(vir& vir, std_msgs::Float32MultiArray box, geometry_msgs::PoseStamped&
     //ux_trans = ux*cos(qua2eul(host_mocap)+camera_offset) - uy*sin(qua2eul(host_mocap)+camera_offset);		//camera cooredinate to body coordinate to world coordinate
     //uy_trans = ux*sin(qua2eul(host_mocap)+camera_offset) + uy*cos(qua2eul(host_mocap)+camera_offset);
 
-
-    vs->twist.linear.x = ux + target_gvel(0);//_trans;
-    vs->twist.linear.y = uy + target_gvel(1);//_trans;
-    vs->twist.linear.z = uz + target_gvel(2);
+	ROS_INFO("ux: %.3f uy: %.3f uz: %.3f uroll: %.3f",ux,uy,uz,uroll);
+    vs->twist.linear.x = ux + vq_global(0);//+ target_gvel(0);//_trans;
+    vs->twist.linear.y = uy + vq_global(1);//+ target_gvel(1);//_trans;
+    vs->twist.linear.z = uz + vq_global(2);//+ target_gvel(2);
     vs->twist.angular.z = uroll;
-    ROS_INFO("vx: %.3f vy: %.3f vz: %.3f vroll: %.3f",ux,uy,uz,uroll);
+    ROS_INFO("vx: %.3f vy: %.3f vz: %.3f",vs->twist.linear.x,vs->twist.linear.y,vs->twist.linear.z);
     vir.x = host_mocap.pose.position.x;
     vir.y = host_mocap.pose.position.y;
     vir.z = host_mocap.pose.position.z;
@@ -722,7 +726,12 @@ void ibvs(vir& vir, std_msgs::Float32MultiArray box, geometry_msgs::PoseStamped&
 void ibvs_ukf(vir& vir, Eigen::VectorXd state, geometry_msgs::PoseStamped& host_mocap, geometry_msgs::TwistStamped* vs, float de_time)
 {
     float xt, yt;
-    float erru, errv, errz, err_roll;
+	float erru, errv, errz, err_roll;
+    float err_ux_cam, err_uy_cam, err_uz_cam, err_upitch_cam;
+	Eigen::Vector3d errv_cam, errw_cam;
+	Eigen::Vector3d errv_global, errw_global;
+	Eigen::Vector3d errv_body;//, errv_global_;
+	Eigen::Vector3d vq_cam, vq_global;
     float ux, uy, uz, uroll;
     float ux_trans, uy_trans;
     float box_x_center, box_y_center;
@@ -730,6 +739,10 @@ void ibvs_ukf(vir& vir, Eigen::VectorXd state, geometry_msgs::PoseStamped& host_
     float depth_Z;
     float fov_x;
     float box_width, box_height;
+
+	vq_cam << x(6), x(7), x(8);
+	vq_global = rot_c2g*vq_cam;
+	cout << "\ntarget_gvel\n" <<vq_global;
 
     box_x_center = fx*state(member_x1) + cx;
     box_y_center = fy*state(member_x1) + cy;
@@ -743,10 +756,20 @@ void ibvs_ukf(vir& vir, Eigen::VectorXd state, geometry_msgs::PoseStamped& host_
     erru = xt;
     errv = yt;
 
-    err_ux = (depth_Z-desired_distance);
-    err_uy = (qua2eul(host_mocap)-desired_heading)*depth_Z*image_width/(fov_x*fx) - erru*depth_Z;
-    err_uz = -depth_Z*errv;
-    err_uroll = -(1/(xt*xt+1))*erru;
+    err_uy_cam = depth_Z*errv;
+    err_uz_cam = (depth_Z-desired_distance);
+    err_upitch_cam = (1/(xt*xt+1))*erru;
+	errv_cam << 0, err_uy_cam, err_uz_cam;
+    errw_cam << 0, err_upitch_cam, 0;
+	errv_body << 0, ((rpy_mocap.yaw - desired_heading)*depth_Z*image_width/(fov_x*fx) - erru*depth_Z), 0;
+	errv_global = rot_c2g*errv_cam + rot_b2g*errv_body;
+	errw_global = rot_c2g*errw_cam;
+	//errv_global_ = rot_b2g*errv_body;
+	//errv_global = errv_global + 
+	err_ux = errv_global(0);// + 1000*target_gvel(0);
+	err_uy = errv_global(1);// + 1000*target_gvel(1);
+	err_uz = errv_global(2);// + 1000*target_gvel(2);
+	err_uroll = errw_global(2);
 
     err_ux_sum = err_ux_sum + err_ux;
     err_uy_sum = err_uy_sum + err_uy;
@@ -771,15 +794,16 @@ void ibvs_ukf(vir& vir, Eigen::VectorXd state, geometry_msgs::PoseStamped& host_
     //ux = 0.3*ux/abs(ux);
 
 
-    ux_trans = ux*cos(qua2eul(host_mocap)+camera_offset) - uy*sin(qua2eul(host_mocap)+camera_offset);		//camera cooredinate to body coordinate to world coordinate
-    uy_trans = ux*sin(qua2eul(host_mocap)+camera_offset) + uy*cos(qua2eul(host_mocap)+camera_offset);
+    //ux_trans = ux*cos(qua2eul(host_mocap)+camera_offset) - uy*sin(qua2eul(host_mocap)+camera_offset);		//camera cooredinate to body coordinate to world coordinate
+    //uy_trans = ux*sin(qua2eul(host_mocap)+camera_offset) + uy*cos(qua2eul(host_mocap)+camera_offset);
 
 
-    vs->twist.linear.x = ux_trans;
-    vs->twist.linear.y = uy_trans;
-    vs->twist.linear.z = uz;
+    ROS_INFO("ux: %.3f uy: %.3f uz: %.3f uroll: %.3f",ux,uy,uz,uroll);
+    vs->twist.linear.x = ux + vq_global(0);//+ target_gvel(0);//_trans;
+    vs->twist.linear.y = uy + vq_global(1);//+ target_gvel(1);//_trans;
+    vs->twist.linear.z = uz + vq_global(2);//+ target_gvel(2);
     vs->twist.angular.z = uroll;
-    ROS_INFO("vx: %.3f vy: %.3f vz: %.3f vroll: %.3f",ux_trans,uy_trans,uz,uroll);
+    ROS_INFO("vx: %.3f vy: %.3f vz: %.3f",vs->twist.linear.x,vs->twist.linear.y,vs->twist.linear.z);
     vir.x = host_mocap.pose.position.x;
     vir.y = host_mocap.pose.position.y;
     vir.z = host_mocap.pose.position.z;
@@ -973,6 +997,18 @@ int main(int argc, char **argv)
                 last_request = ros::Time::now();
             }
         }
+
+		if(!isnormal(x(0)))
+		{
+			initialize();
+			x(0) = 1;
+			x(1) = 1;
+			x(2) = 0.14;
+			P = P_init;
+			R = measurement_noise;
+			Q = process_noise;
+			callback_spin_count = 100;
+		}
 
         ukf_estimate::output measure_value, estimate_value;
         float center_u, center_v, box_area;
