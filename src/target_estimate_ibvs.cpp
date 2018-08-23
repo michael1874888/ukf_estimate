@@ -579,7 +579,7 @@ rpy quaternionToRPY(float quat_x, float quat_y, float quat_z, float quat_w)
     return rpy1;
 }
 rpy rpy_mocap;
-
+/*
 float qua2eul(geometry_msgs::PoseStamped& host_mocap)
 {
     float pitch,yaw,roll,qx2,qy2,qz2,qw2;
@@ -591,7 +591,7 @@ float qua2eul(geometry_msgs::PoseStamped& host_mocap)
 
     return yaw;
 }
-
+*/
 void follow(vir& vir, geometry_msgs::PoseStamped& host_mocap, geometry_msgs::TwistStamped* vs, float dis_x, float dis_y)
 {
     float errx, erry, errz, err_roll;
@@ -604,7 +604,7 @@ void follow(vir& vir, geometry_msgs::PoseStamped& host_mocap, geometry_msgs::Twi
     errx = vir.x - host_mocap.pose.position.x - local_x;
     erry = vir.y - host_mocap.pose.position.y - local_y;
     errz = vir.z - host_mocap.pose.position.z - 0;
-    err_roll = vir.roll - qua2eul(host_mocap);
+    err_roll = vir.roll - rpy_mocap.yaw;
     if(err_roll>pi)
         err_roll = err_roll - 2*pi;
     else if(err_roll<-pi)
@@ -661,8 +661,8 @@ void ibvs(vir& vir, std_msgs::Float32MultiArray box, geometry_msgs::PoseStamped&
 	
 	//ROS_INFO("erru: %.2f errv:%.2f",xt,yt);
 
-    erru = xt;
-    errv = yt;
+    erru = xt - (cx - cx)/fx;
+    errv = yt - ((cy + 0.1*image_height) - cy)/fy;
 
     err_uy_cam = depth_Z*errv;
     err_uz_cam = (depth_Z-desired_distance);
@@ -753,8 +753,8 @@ void ibvs_ukf(vir& vir, Eigen::VectorXd state, geometry_msgs::PoseStamped& host_
     depth_Z = 1000/state(member_x3);       //meter to millimeter
     ROS_INFO("u:%.2f v: %.2f z:%.2f",box_x_center,box_y_center,depth_Z);
 
-    erru = xt;
-    errv = yt;
+    erru = xt - (cx - cx)/fx;
+    errv = yt - ((cy + 0.1*image_height) - cy)/fy;
 
     err_uy_cam = depth_Z*errv;
     err_uz_cam = (depth_Z-desired_distance);
@@ -1201,7 +1201,7 @@ int main(int argc, char **argv)
         measure_value.feature.y = (host_mocap.pose.position.z - car_pose.pose.position.z)/(host_mocap.pose.position.y - car_pose.pose.position.y);
         measure_value.feature.z = (host_mocap.pose.position.y - car_pose.pose.position.y);
         measure_value.target_pose.x = car_pose.pose.position.x + 1.3827;
-        measure_value.target_pose.y = car_pose.pose.position.y + 0.5;// + 1.03453;
+        measure_value.target_pose.y = car_pose.pose.position.y + 1.03453;
         measure_value.target_pose.z = car_pose.pose.position.z + 0.75;
         measure_value.target_vel.x = target_g2cvel(0);
         measure_value.target_vel.y = target_g2cvel(1);
