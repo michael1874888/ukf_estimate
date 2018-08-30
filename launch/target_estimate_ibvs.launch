@@ -2,7 +2,9 @@
    <node pkg="ukf_estimate" name="target_estimate_ibvs" type="target_estimate_ibvs" output="screen" >
 
      <param name="topic_box" value="/YOLO/box" />
-	 <param name="KPx_ibvs" value="0.0004" />
+
+<!--PID in global frame-->
+	 <!--param name="KPx_ibvs" value="0.0004" />
      <param name="KPy_ibvs" value="0.0004" />
      <param name="KPz_ibvs" value="0.0006" />
 	 <param name="KProll_ibvs" value="1.2" />
@@ -13,6 +15,19 @@
      <param name="Tdx_ibvs" value="0.1" />
      <param name="Tdy_ibvs" value="0.1" />
 	 <param name="Tdz_ibvs" value="0.0" />
+     <param name="Tdroll_ibvs" value="0.8" /-->
+<!--PID in camera frame-->
+	 <param name="KPx_ibvs" value="0.0004" />
+     <param name="KPy_ibvs" value="0.0006" />
+     <param name="KPz_ibvs" value="0.0004" />
+	 <param name="KProll_ibvs" value="1.2" />
+	 <param name="Tix_ibvs" value="13.5" />
+     <param name="Tiy_ibvs" value="10000" />
+	 <param name="Tiz_ibvs" value="10" />
+     <param name="Tiroll_ibvs" value="5" />
+     <param name="Tdx_ibvs" value="0.1" />
+     <param name="Tdy_ibvs" value="0.04" />
+	 <param name="Tdz_ibvs" value="0.1" />
      <param name="Tdroll_ibvs" value="0.8" />
 
 
