@@ -43,7 +43,7 @@
 
 	 <param name="measurement_noise_0" value="10" />
      <param name="measurement_noise_1" value="10" />
-     <param name="measurement_noise_2" value="10000" />
+     <param name="measurement_noise_2" value="500" />
 	 <param name="measurement_noise_3" value="0.0001" />
      <param name="measurement_noise_4" value="0.0001" />
      <param name="measurement_noise_5" value="0.0001" />

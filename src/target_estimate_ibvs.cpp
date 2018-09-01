@@ -857,7 +857,7 @@ int main(int argc, char **argv)
     ros::ServiceClient set_mode_client = nh.serviceClient<mavros_msgs::SetMode>("mavros/set_mode");
     ros::Publisher local_vel_pub = nh.advertise<geometry_msgs::TwistStamped>("mavros/setpoint_velocity/cmd_vel", 1);
 
-    ros::Rate rate(15);
+    ros::Rate rate(50);
     //ros::AsyncSpinner spinner(2);   //0 means use threads of CPU numbers
     //spinner.start();
 
@@ -909,9 +909,9 @@ int main(int argc, char **argv)
         local_vel_pub.publish(vs);
         mocap_pos_pub.publish(host_mocap);
         //ROS_INFO("position: %.3f, %.3f, %.3f", host_mocap.pose.position.x, host_mocap.pose.position.y, host_mocap.pose.position.z);
-        vir1.x = 0;
-        vir1.y = 7.5;
-        vir1.z = 0.9;
+        vir1.x = host_mocap.pose.position.x;
+        vir1.y = host_mocap.pose.position.y;
+        vir1.z = host_mocap.pose.position.z + 0.8;
         vir1.roll = desired_heading;
         callback_spin_count++;
         ros::spinOnce();
@@ -1007,6 +1007,7 @@ int main(int argc, char **argv)
 			R = measurement_noise;
 			Q = process_noise;
 			callback_spin_count = 100;
+			ibvs_mode = false;
 		}
 
         ukf_estimate::output measure_value, estimate_value;
@@ -1084,13 +1085,13 @@ int main(int argc, char **argv)
         if(box.data[0] != -1)
             correct(measure_vector);
 
-        noise_estimate(20);
-        if(Q(6,6)<0.01)
-            Q(6,6) = 0.01;
-        if(Q(7,7)<0.005)
-            Q(7,7) = 0.005;
-        if(Q(8,8)<0.0001)
-            Q(8,8) = 0.0001;
+        noise_estimate(100);
+        if(Q(6,6)<0.003)
+            Q(6,6) = 0.003;
+        if(Q(7,7)<0.003)
+            Q(7,7) = 0.003;
+        if(Q(8,8)<0.002)
+            Q(8,8) = 0.002;
 
         int c = getch();
         //ROS_INFO("C: %d",c);
@@ -1166,13 +1167,25 @@ int main(int argc, char **argv)
             vir1.roll = vir1.roll + 2*pi;
 
 
-        if(box.data[1] == -1 && box.data[2] == -1 && box.data[3] == -1 && box.data[4] == -1 || ibvs_mode == false)
+        if(ibvs_mode == false)
         {
             ROS_INFO("position: %.3f, %.3f, %.3f", host_mocap.pose.position.x, host_mocap.pose.position.y, host_mocap.pose.position.z);
             ROS_INFO("setpoint: %.2f, %.2f, %.2f, %.2f", vir1.x, vir1.y, vir1.z, vir1.roll/pi*180);
+			err_ux_pre = 0;
+			err_uy_pre = 0;
+			err_uz_pre = 0;
+			err_uroll_pre = 0;
+			err_ux_dev = 0;
+			err_uy_dev = 0;
+			err_uz_dev = 0;
+			err_uroll_dev = 0;
+			err_ux_sum = 0;
+			err_uy_sum = 0;
+			err_uz_sum = 0;
+			err_uroll_sum = 0;
 
             follow(vir1,host_mocap,&vs,0,0);
-            if(box.data[1] != -1 || box.data[2] != -1 || box.data[3] != -1 || box.data[4] != -1)
+            if(box.data[0] != -1)
                 ROS_INFO("target detected");
         }
         else
@@ -1202,7 +1215,7 @@ int main(int argc, char **argv)
         measure_value.feature.y = (host_mocap.pose.position.z - car_pose.pose.position.z)/(host_mocap.pose.position.y - car_pose.pose.position.y);
         measure_value.feature.z = (host_mocap.pose.position.y - car_pose.pose.position.y);
         measure_value.target_pose.x = car_pose.pose.position.x + 1.3827;
-        measure_value.target_pose.y = car_pose.pose.position.y + 1.03453;
+        measure_value.target_pose.y = car_pose.pose.position.y + 2.03453;
         measure_value.target_pose.z = car_pose.pose.position.z + 0.75;
         measure_value.target_vel.x = target_g2cvel(0);
         measure_value.target_vel.y = target_g2cvel(1);
