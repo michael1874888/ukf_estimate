@@ -31,18 +31,18 @@
      <param name="Tdroll_ibvs" value="0.8" />
 
 
-     <param name="P_init_0" value="800" />
-     <param name="P_init_1" value="800" />
-     <param name="P_init_2" value="800" />
-	 <param name="P_init_3" value="800" />
-     <param name="P_init_4" value="800" />
-     <param name="P_init_5" value="800" />
-	 <param name="P_init_6" value="800" />
-     <param name="P_init_7" value="800" />
-     <param name="P_init_8" value="800" />
+     <param name="P_init_0" value="50" />
+     <param name="P_init_1" value="50" />
+     <param name="P_init_2" value="50" />
+	 <param name="P_init_3" value="50" />
+     <param name="P_init_4" value="50" />
+     <param name="P_init_5" value="50" />
+	 <param name="P_init_6" value="50" />
+     <param name="P_init_7" value="50" />
+     <param name="P_init_8" value="50" />
 
-	 <param name="measurement_noise_0" value="10" />
-     <param name="measurement_noise_1" value="10" />
+	 <param name="measurement_noise_0" value="20" />
+     <param name="measurement_noise_1" value="20" />
      <param name="measurement_noise_2" value="500" />
 	 <param name="measurement_noise_3" value="0.0001" />
      <param name="measurement_noise_4" value="0.0001" />

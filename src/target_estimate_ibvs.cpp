@@ -550,7 +550,7 @@ void noise_estimate(int window_size)
             R_window_sum += R_window.at(i)*v_weight.at(i);
             //cout<<"v_weight"<<i<<": "<<v_weight.at(i);
         }
-        if(callback_spin_count>250)
+        if(callback_spin_count>280)
         {
             //q = q_window_sum;
             //r = r_window_sum;
@@ -940,7 +940,7 @@ int main(int argc, char **argv)
     vs.twist.angular.z = 0;
 
     //send a few setpoints before starting
-    for(int i = 100; ros::ok() && i > 0; --i){
+    for(int i = 50; ros::ok() && i > 0; --i){
         local_vel_pub.publish(vs);
         mocap_pos_pub.publish(host_mocap);
         //ROS_INFO("position: %.3f, %.3f, %.3f", host_mocap.pose.position.x, host_mocap.pose.position.y, host_mocap.pose.position.z);
@@ -1016,7 +1016,7 @@ int main(int argc, char **argv)
         if (current_state.mode != "OFFBOARD" &&
                 (ros::Time::now() - last_request > ros::Duration(5.0))) {
             if( set_mode_client.call(offb_set_mode) &&
-                    offb_set_mode.response.mode_sent) {
+                    offb_set_mode.response.success) {
                 ROS_INFO("Offboard enabled");
             }
             last_request = ros::Time::now();
@@ -1041,7 +1041,7 @@ int main(int argc, char **argv)
 			P = P_init;
 			R = measurement_noise;
 			Q = process_noise;
-			callback_spin_count = 100;
+			callback_spin_count = 50;
 			ibvs_mode = false;
 		}
 
@@ -1123,12 +1123,12 @@ int main(int argc, char **argv)
             correct(measure_vector);
 
         noise_estimate(100);
-        if(Q(6,6)<0.003)
-            Q(6,6) = 0.003;
-        if(Q(7,7)<0.003)
-            Q(7,7) = 0.003;
-        if(Q(8,8)<0.002)
-            Q(8,8) = 0.002;
+        //if(Q(6,6)<0.003)
+            //Q(6,6) = 0.003;
+        //if(Q(7,7)<0.003)
+            //Q(7,7) = 0.003;
+        //if(Q(8,8)<0.002)
+            //Q(8,8) = 0.002;
 
         int c = getch();
         //ROS_INFO("C: %d",c);
