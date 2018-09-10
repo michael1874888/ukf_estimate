@@ -490,7 +490,7 @@ void noise_estimate(int window_size)
     Eigen::MatrixXd Q_window_element_, R_window_element_;
     double delta_S, w_element;
     deque<double> v_weight;
-    float S_gain = 1;
+    float S_gain = 10;
     Q_window_element.setZero(x_size,x_size);
     R_window_element.setZero(y_size,y_size);
     v_weight.resize(window_size);
@@ -550,7 +550,7 @@ void noise_estimate(int window_size)
             R_window_sum += R_window.at(i)*v_weight.at(i);
             //cout<<"v_weight"<<i<<": "<<v_weight.at(i);
         }
-        if(callback_spin_count>280)
+        if(callback_spin_count>200)
         {
             //q = q_window_sum;
             //r = r_window_sum;
@@ -562,7 +562,7 @@ void noise_estimate(int window_size)
     //cout << "\nq" <<q_window_sum;
     //cout << "\nr" <<r_window_element;
     //cout << "\nQ\n" <<Q_window_element;
-    //cout << "\nQsum\n" <<Q_window_sum<<"\n";
+    cout << "\nQsum\n" <<Q_window_sum<<"\n";
     //cout << "\nR\n" <<R_window_element<<"\n";
     //cout << "\nR" <<R_window_element<<"\n";
     //cout << "\nRsum" <<R_window_sum<<"\n";
@@ -1016,7 +1016,7 @@ int main(int argc, char **argv)
         if (current_state.mode != "OFFBOARD" &&
                 (ros::Time::now() - last_request > ros::Duration(5.0))) {
             if( set_mode_client.call(offb_set_mode) &&
-                    offb_set_mode.response.success) {
+                    offb_set_mode.response.mode_sent) {
                 ROS_INFO("Offboard enabled");
             }
             last_request = ros::Time::now();
@@ -1119,14 +1119,14 @@ int main(int argc, char **argv)
         //ROS_INFO("mx1:%.3f mx2:%.3f mz:%.3f", (center_u - cx)/fx, (center_v - cy)/fy, 1/sqrt(box_area/(model_height*model_width*fx*fy)));
 
         //execute correct if the target is detected
-        if(box.data[0] != -1)
+        if(box.data[0] >= 0.8)
             correct(measure_vector);
 
         noise_estimate(100);
-        //if(Q(6,6)<0.003)
-            //Q(6,6) = 0.003;
-        //if(Q(7,7)<0.003)
-            //Q(7,7) = 0.003;
+        if(Q(6,6)<0.002)
+            Q(6,6) = 0.002;
+        if(Q(7,7)<0.002)
+            Q(7,7) = 0.002;
         //if(Q(8,8)<0.002)
             //Q(8,8) = 0.002;
 
@@ -1222,7 +1222,7 @@ int main(int argc, char **argv)
 			err_uroll_sum = 0;
 
             follow(vir1,host_mocap,&vs,0,0);
-            if(box.data[0] != -1)
+            if(box.data[0] >= 0.8)
                 ROS_INFO("target detected");
         }
         else
@@ -1242,8 +1242,8 @@ int main(int argc, char **argv)
                 vir1.y = 7.5;
                 vir1.z = 0.7;
                 follow(vir1,host_mocap,&vs,0,0);
-                //ibvs_ukf(vir1, x, host_mocap, &vs, dt);
-				pbvs_ukf(x,host_mocap,&vs,0,7.5);
+                ibvs_ukf(vir1, x, host_mocap, &vs, dt);
+				//pbvs_ukf(x,host_mocap,&vs,0,7.5);
             }
         }
         //ROS_INFO("drone: x:%.3f  y:%.3f  z:%.3f", host_mocap.pose.position.x, host_mocap.pose.position.y, host_mocap.pose.position.z);
