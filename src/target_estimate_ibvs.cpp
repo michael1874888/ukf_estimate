@@ -309,7 +309,7 @@ Eigen::MatrixXd state_to_measure(Eigen::MatrixXd sigma_state){
 
         predict_sigma_measure( member_mu ,i) =   fx*sigma_state(member_x1,i) + cx;
         predict_sigma_measure( member_mv ,i) =   fy*sigma_state(member_x2,i) + cy;
-        predict_sigma_measure( member_ma ,i) =   fx*fy*model_width*model_height*sigma_state(member_x3,i)*sigma_state(member_x3,i)*sign(sigma_state(member_x3,i));
+        predict_sigma_measure( member_ma ,i) =   1/sigma_state(member_x3,i);
         //a will be positive although x3 is negative, so we need to add sign function
         //add bias to predict measurement
         predict_sigma_measure( member_mxc ,i) =   sigma_state(member_xq,i) - rel_posec2g(0);
@@ -957,9 +957,9 @@ int main(int argc, char **argv)
 
 
     //set initial value of state
-    x(0) = 1;
-    x(1) = 1;
-    x(2) = 0.14;
+    x(0) = (box.data[2]*image_width - cx)/fx;
+	x(1) = (box.data[1]*image_height - cy)/fy;
+	x(2) = 1/sqrt(((model_width*model_height)/(box.data[4]*image_width*box.data[3]*image_height))*fx*fy);
 
     //increase the initial value of P can increase the speed of convergence
     Eigen::MatrixXd P_init;
@@ -1032,23 +1032,26 @@ int main(int argc, char **argv)
             }
         }
 
+
 		if(!isnormal(x(0)))
 		{
 			initialize();
-			x(0) = 1;
-			x(1) = 1;
-			x(2) = 0.14;
+			x(0) = (box.data[2]*image_width - cx)/fx;
+			x(1) = (box.data[1]*image_height - cy)/fy;
+			x(2) = 1/sqrt(((model_width*model_height)/(box.data[4]*image_width*box.data[3]*image_height))*fx*fy);
 			P = P_init;
 			R = measurement_noise;
 			Q = process_noise;
 			callback_spin_count = 50;
 			ibvs_mode = false;
+			ROS_INFO("x(0):%.3f, x(1):%.3f, x(2):%.3f", x(0), x(1), x(2));
 		}
 
         ukf_estimate::output measure_value, estimate_value;
         float center_u, center_v, box_area;
         rpy_mocap = quaternionToRPY(host_mocap.pose.orientation.x,host_mocap.pose.orientation.y,host_mocap.pose.orientation.z,host_mocap.pose.orientation.w);
 
+		
         global_vel << host_mocap_vel.linear.x, host_mocap_vel.linear.y, host_mocap_vel.linear.z;
         global_wvel << host_mocap_vel.angular.x, host_mocap_vel.angular.y, host_mocap_vel.angular.z;
         target_gvel << car_vel.linear.x, car_vel.linear.y, car_vel.linear.z;
@@ -1113,7 +1116,8 @@ int main(int argc, char **argv)
         measure_vector.setZero(measurementsize);
         center_u = box.data[2]*image_width;
         center_v = box.data[1]*image_height;
-        box_area = abs(box.data[3]*image_height*box.data[4]*image_width);
+        //box_area = abs(box.data[3]*image_height*box.data[4]*image_width);
+		box_area = sqrt(((model_width*model_height)/(box.data[4]*image_width*box.data[3]*image_height))*fx*fy);
         measure_vector<<center_u, center_v, box_area, host_mocap.pose.position.x, host_mocap.pose.position.y, host_mocap.pose.position.z;
         ROS_INFO("u:%.3f v:%.3f a:%.3f", center_u, center_v, box_area);
         //ROS_INFO("mx1:%.3f mx2:%.3f mz:%.3f", (center_u - cx)/fx, (center_v - cy)/fy, 1/sqrt(box_area/(model_height*model_width*fx*fy)));
