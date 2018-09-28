@@ -17,9 +17,9 @@
 	 <param name="Tdz_ibvs" value="0.0" />
      <param name="Tdroll_ibvs" value="0.8" /-->
 <!--PID in camera frame-->
-	 <param name="KPx_ibvs" value="0.0009" />
-     <param name="KPy_ibvs" value="0.0004" />
-     <param name="KPz_ibvs" value="0.0009" />
+	 <param name="KPx_ibvs" value="0.9" />
+     <param name="KPy_ibvs" value="0.4" />
+     <param name="KPz_ibvs" value="0.9" />
 	 <param name="KProll_ibvs" value="1.2" />
 	 <param name="Tix_ibvs" value="10000" />
      <param name="Tiy_ibvs" value="10000" />

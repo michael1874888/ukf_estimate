@@ -61,7 +61,7 @@ float Tdy_ibvs = 0;
 float Tdz_ibvs = 0;
 float Tdroll_ibvs = 0;
 
-float desired_distance = 6500;							//5500
+float desired_distance = 6.5;							//5500
 float camera_offset = 0;							//0
 float desired_heading = -pi/2;							//-pi/2
 
@@ -619,15 +619,14 @@ void follow(vir& vir, geometry_msgs::PoseStamped& host_mocap, geometry_msgs::Twi
 void ibvs(vir& vir, std_msgs::Float32MultiArray box, geometry_msgs::PoseStamped& host_mocap, geometry_msgs::TwistStamped* vs, float de_time)
 {
     float xt, yt;
-    float erru, errv, errz, err_roll;
+    float erru, errv;
     float err_ux_cam, err_uy_cam, err_uz_cam, err_upitch_cam;
     Eigen::Vector3d errv_cam, errw_cam;
-    Eigen::Vector3d errv_global, errw_global;
     Eigen::Vector3d errv_body;//, errv_global_;
     Eigen::Vector3d vq_cam, vq_global;
     Eigen::Vector3d uv_global, uw_global, uv_cam, uw_cam;
     float ux, uy, uz, uroll;
-    float ux_trans, uy_trans;
+    //float ux_trans, uy_trans;
     float box_x_center, box_y_center;
     float model_true_area, model_image_area;
     float depth_Z;
@@ -723,51 +722,63 @@ void ibvs(vir& vir, std_msgs::Float32MultiArray box, geometry_msgs::PoseStamped&
 
 void ibvs_ukf(vir& vir, Eigen::VectorXd state, geometry_msgs::PoseStamped& host_mocap, geometry_msgs::TwistStamped* vs, float de_time)
 {
-    float xt, yt;
-    float erru, errv, errz, err_roll;
+    float x1, x2, x3;
+    float err_x1, err_x2, err_x3;
     float err_ux_cam, err_uy_cam, err_uz_cam, err_upitch_cam;
+    Eigen::MatrixXd Le, Le_inv;
+    Eigen::Vector3d err_features, command_vel_tmp;
     Eigen::Vector3d errv_cam, errw_cam;
-    Eigen::Vector3d errv_global, errw_global;
-    Eigen::Vector3d errv_body;//, errv_global_;
-    Eigen::Vector3d vq_cam, vq_global;
+    Eigen::Vector3d errv_body;
+    Eigen::Vector3d vq_global;
     Eigen::Vector3d uv_global, uw_global, uv_cam, uw_cam;
     float ux, uy, uz, uroll;
-    float ux_trans, uy_trans;
-    float box_x_center, box_y_center;
-    float model_true_area, model_image_area;
+    //float box_x_center, box_y_center;
     float depth_Z;
     float fov_x;
-    float box_width, box_height;
 
     //vq_cam << state(member_vqx), state(member_vqy), state(member_vqz);
     vq_global << state(member_vqx), state(member_vqy), state(member_vqz);
     cout << "\ntarget_gvel\n" <<vq_global;
 
-    box_x_center = fx*state(member_x1) + cx;
-    box_y_center = fy*state(member_x1) + cy;
+    //box_x_center = fx*state(member_x1) + cx;
+    //box_y_center = fy*state(member_x1) + cy;
     fov_x = 2*atan(image_width/(2*fx));
 
-    xt = state(member_x1);
-    yt = state(member_x2);
-    depth_Z = 1000/state(member_x3);       //meter to millimeter
-    ROS_INFO("u:%.2f v: %.2f z:%.2f",box_x_center,box_y_center,depth_Z);
+    x1 = state(member_x1);
+    x2 = state(member_x2);
+    x3 = state(member_x3);       //meter to millimeter
+    depth_Z = 1/x3;
+    //ROS_INFO("u:%.2f v: %.2f z:%.2f",box_x_center,box_y_center,1/x3);
 
-    erru = xt - (cx - cx)/fx;
-    errv = yt - ((cy + 0.1*image_height) - cy)/fy;
-    //define a = sqrt(model_true_area/(depth_Z^2)) = sqrt(model_image_area/(fx*fy))
-    //err_a = a - a* = a - a*depth_Z/depth_Z*
+    err_x1 = x1 - (cx - cx)/fx;
+    err_x2 = x2 - ((cy + 0.1*image_height) - cy)/fy;
+    err_x3 = x3 - (1/desired_distance);
 
-    err_uy_cam = depth_Z*errv;
-    err_uz_cam = -depth_Z*(1 - depth_Z/desired_distance);
-    err_upitch_cam = (1/(xt*xt+1))*erru;
-    errv_cam << 0, err_uy_cam, err_uz_cam;
-    errw_cam << 0, err_upitch_cam, 0;
+    err_features << err_x1, err_x2, err_x3;
+
+    Le.setZero(3,3);
+    Le_inv.setZero(3,3);
+    Le << 0, 0, -(x1*x1+1),
+            -x3, 0, 0,
+            0, x3*x3, 0;
+    Le_inv = (((Le.transpose())*Le).inverse())*Le.transpose();
+//    Le_inv << 0, 1/x3, 0,
+//            0, 0, -1/(x3*x3),
+//            (1/(x1*x1+1)), 0, 0;
+//    cout << "\nLe_inv\n" << Le_inv << "\nLe_pinv\n" <<(((Le.transpose())*Le).inverse())*Le.transpose();
+
+    command_vel_tmp = -1* Eigen::MatrixXd::Identity(3,3)*Le_inv*err_features;       //v = -K*(Le^+)*e = K*((-Le^+)*e)
+
+//    err_uy_cam = depth_Z*err_x2;
+//    err_uz_cam = -depth_Z*(1 - depth_Z/(1000*desired_distance));
+//    err_upitch_cam = (1/(x1*x1+1))*err_x1;
+
+    errv_cam << 0, command_vel_tmp(0), command_vel_tmp(1);
+    errw_cam << 0, command_vel_tmp(2), 0;
+    //cout << "\ncommand_vel_tmp\n" <<command_vel_tmp << "\nerrw_cam\n" <<errw_cam;
     errv_body << 0, ((rpy_mocap.yaw - desired_heading)*depth_Z*image_width/(fov_x*fx)/* - erru*depth_Z*/), 0;
     errv_cam = errv_cam + rot_b2c*errv_body;
-    //errv_global = rot_c2g*errv_cam + rot_b2g*errv_body;
-    //errw_global = rot_c2g*errw_cam;
-    //errv_global_ = rot_b2g*errv_body;
-    //errv_global = errv_global +
+
     err_ux = errv_cam(0);// + 1000*target_gvel(0);
     err_uy = errv_cam(1);// + 1000*target_gvel(1);
     err_uz = errv_cam(2);// + 1000*target_gvel(2);
@@ -916,7 +927,6 @@ int main(int argc, char **argv)
     ros::Time current_time = ros::Time::now();
     ros::Time previous_time = ros::Time::now();
     geometry_msgs::TwistStamped vs;
-    std_msgs::Float32MultiArray ukf_box;
     vir vir1;
 
     ros::param::get("~KPx_ibvs", KPx_ibvs);
