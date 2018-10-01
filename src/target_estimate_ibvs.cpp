@@ -725,7 +725,8 @@ void ibvs_ukf(vir& vir, Eigen::VectorXd state, geometry_msgs::PoseStamped& host_
     float x1, x2, x3;
     float err_x1, err_x2, err_x3;
     float err_ux_cam, err_uy_cam, err_uz_cam, err_upitch_cam;
-    Eigen::MatrixXd Le, Le_inv;
+    Eigen::MatrixXd Le, Le_inv, Le2, Le_pinv;
+    Eigen::VectorXd command_vel_tmp2;
     Eigen::Vector3d err_features, command_vel_tmp;
     Eigen::Vector3d errv_cam, errw_cam;
     Eigen::Vector3d errv_body;
@@ -735,6 +736,7 @@ void ibvs_ukf(vir& vir, Eigen::VectorXd state, geometry_msgs::PoseStamped& host_
     //float box_x_center, box_y_center;
     float depth_Z;
     float fov_x;
+    float t1, t2, t3;
 
     //vq_cam << state(member_vqx), state(member_vqy), state(member_vqz);
     vq_global << state(member_vqx), state(member_vqy), state(member_vqz);
@@ -748,6 +750,9 @@ void ibvs_ukf(vir& vir, Eigen::VectorXd state, geometry_msgs::PoseStamped& host_
     x2 = state(member_x2);
     x3 = state(member_x3);       //meter to millimeter
     depth_Z = 1/x3;
+    t1 = (x1*x1 + x2*x2 + x3*x3 + 1);
+    t2 = x1*x1*x2*x2;
+    t3 = t2;
     //ROS_INFO("u:%.2f v: %.2f z:%.2f",box_x_center,box_y_center,1/x3);
 
     err_x1 = x1 - (cx - cx)/fx;
@@ -765,9 +770,25 @@ void ibvs_ukf(vir& vir, Eigen::VectorXd state, geometry_msgs::PoseStamped& host_
 //    Le_inv << 0, 1/x3, 0,
 //            0, 0, -1/(x3*x3),
 //            (1/(x1*x1+1)), 0, 0;
-//    cout << "\nLe_inv\n" << Le_inv << "\nLe_pinv\n" <<(((Le.transpose())*Le).inverse())*Le.transpose();
+//    cout << "\nLe\n" << Le << "\nLe_inv\n" <<Le_inv;
+//    Le2.setZero(3,6);
+//    Le_pinv.setZero(6,3);
+//    Le2 << -x3, 0, x1*x3, x1*x2, -(x1*x1 + 1), x2,
+//            0, -x3, x2*x3, (x2*x2 + 1), -x1*x2, -x1,
+//            0, 0, x3*x3, x2*x3, -x1*x3, 0;
+//    Le_pinv = (((Le2.transpose())*Le2).inverse())*Le2.transpose();
+//    Le_pinv << -(x1*x1 + x3*x3)/(x3*t1), -(x2*x1*x1)/(x1*x3*t1), (pow(x1,4) + x1*x1*x3*x3 + t2 + x1*x1)/(x1*x3*x3*t1),
+//            -(x1*x2*x2)/(x2*x3*t1), -(x2*x2 + x3*x3)/(x3*t1), (pow(x2,4) + x2*x2*x3*x3 + t3 + x2*x2)/(x2*x3*x3*t1),
+//            -x1/(x3*t1), -x2/(x3*t1), 1/(x3*x3),
+//            0,0,0,
+//            -1/t1, 0, 0,
+//            0,0,0;
+//    cout << "\nLe_pinv\n" << Le_pinv;
 
     command_vel_tmp = -1* Eigen::MatrixXd::Identity(3,3)*Le_inv*err_features;       //v = -K*(Le^+)*e = K*((-Le^+)*e)
+//    command_vel_tmp2.setZero(6);
+//    command_vel_tmp2 = -1* Eigen::MatrixXd::Identity(6,6)*Le_pinv*err_features;
+//    cout << "\nLe_pinv\n" << Le_pinv(4,0) << "\nwcy\n" <<1/(x1*x1 + x2*x2 + x3*x3 + 1);
 
 //    err_uy_cam = depth_Z*err_x2;
 //    err_uz_cam = -depth_Z*(1 - depth_Z/(1000*desired_distance));
@@ -777,7 +798,7 @@ void ibvs_ukf(vir& vir, Eigen::VectorXd state, geometry_msgs::PoseStamped& host_
     errw_cam << 0, command_vel_tmp(2), 0;
     //cout << "\ncommand_vel_tmp\n" <<command_vel_tmp << "\nerrw_cam\n" <<errw_cam;
     errv_body << 0, ((rpy_mocap.yaw - desired_heading)*depth_Z*image_width/(fov_x*fx)/* - erru*depth_Z*/), 0;
-    errv_cam = errv_cam + rot_b2c*errv_body;
+    errv_cam(0) = (rot_b2c*errv_body)(0);
 
     err_ux = errv_cam(0);// + 1000*target_gvel(0);
     err_uy = errv_cam(1);// + 1000*target_gvel(1);
