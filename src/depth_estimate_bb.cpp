@@ -261,7 +261,7 @@ Eigen::MatrixXd dynamics(Eigen::MatrixXd sigma_state){
     }
     ROS_INFO("x1:%.3f x2:%.3f x3:%.3f, z:%.3f",sigma_state(member_x1,0),sigma_state(member_x2,0),sigma_state(member_x3,0),1/sigma_state(member_x3,0));
     ROS_INFO("x1_:%.3f x2_:%.3f x3_:%.3f z:%.3f",predict_sigma_state(member_x1,0),predict_sigma_state(member_x2,0),predict_sigma_state(member_x3,0),1/predict_sigma_state(member_x3,0));
-        ROS_INFO("A: %.3f",predict_sigma_state(member_A,0));
+    ROS_INFO("A: %.3f",predict_sigma_state(member_A,0));
     //ROS_INFO("xq:%.3f yq:%.3f zq:%.3f",sigma_state(member_xq,0),sigma_state(member_yq,0),sigma_state(member_zq,0));
     //ROS_INFO("vqx_:%.3f vqy_:%.3f vqz_:%.3f",predict_sigma_state(member_vqx,0),predict_sigma_state(member_vqy,0),predict_sigma_state(member_vqz,0));
 
@@ -287,7 +287,7 @@ Eigen::MatrixXd state_to_measure(Eigen::MatrixXd sigma_state){
 
         predict_sigma_measure( member_mu ,i) =   fx*sigma_state(member_x1,i) + cx;
         predict_sigma_measure( member_mv ,i) =   fy*sigma_state(member_x2,i) + cy;
-        predict_sigma_measure( member_ma ,i) =   sigma_state(member_A,i)*fx*fy*sigma_state(member_x3,i)*sigma_state(member_x3,i)*sign(sigma_state(member_x3,i));
+        predict_sigma_measure( member_ma ,i) =   abs(sigma_state(member_A,i))*fx*fy*sigma_state(member_x3,i)*sigma_state(member_x3,i)*sign(sigma_state(member_x3,i));
         //a will be positive although x3 is negative, so we need to add sign function
         //add bias to predict measurement
         predict_sigma_measure( member_mxc ,i) =    - rel_posec2g(0);
@@ -860,15 +860,15 @@ int main(int argc, char **argv)
     ros::param::get("~topic_box", topic_box);
     ros::Subscriber host_sub = nh.subscribe<gazebo_msgs::ModelStates>("/gazebo/model_states",1,mocap_cb);
     ros::Subscriber imu_sub = nh.subscribe<sensor_msgs::Imu>("/mavros/imu/data",1,imu_cb);
-    ros::Publisher measurement_pub = nh.advertise<ukf_estimate::output>("/measurement_data", 1);
-    ros::Publisher estimate_pub = nh.advertise<ukf_estimate::output>("/estimate_data", 1);
+    ros::Publisher measurement_pub = nh.advertise<ukf_estimate::output>("/measurement_data2", 1);
+    ros::Publisher estimate_pub = nh.advertise<ukf_estimate::output>("/estimate_data2", 1);
     ros::Subscriber bb_box_sub = nh.subscribe<std_msgs::Float32MultiArray>(topic_box, 1, box_cb);
 
-    ros::Subscriber state_sub = nh.subscribe<mavros_msgs::State>("mavros/state", 10, state_cb);
-    ros::Publisher mocap_pos_pub = nh.advertise<geometry_msgs::PoseStamped>("mavros/mocap/pose", 1);
-    ros::ServiceClient arming_client = nh.serviceClient<mavros_msgs::CommandBool>("mavros/cmd/arming");
-    ros::ServiceClient set_mode_client = nh.serviceClient<mavros_msgs::SetMode>("mavros/set_mode");
-    ros::Publisher local_vel_pub = nh.advertise<geometry_msgs::TwistStamped>("mavros/setpoint_velocity/cmd_vel", 1);
+    ros::Subscriber state_sub = nh.subscribe<mavros_msgs::State>("mavros/state2", 10, state_cb);
+    ros::Publisher mocap_pos_pub = nh.advertise<geometry_msgs::PoseStamped>("mavros/mocap/pose2", 1);
+    ros::ServiceClient arming_client = nh.serviceClient<mavros_msgs::CommandBool>("mavros/cmd/arming2");
+    ros::ServiceClient set_mode_client = nh.serviceClient<mavros_msgs::SetMode>("mavros/set_mode2");
+    ros::Publisher local_vel_pub = nh.advertise<geometry_msgs::TwistStamped>("mavros/setpoint_velocity/cmd_vel2", 1);
 
     ros::Rate rate(50);
     //ros::AsyncSpinner spinner(2);   //0 means use threads of CPU numbers
@@ -938,7 +938,7 @@ int main(int argc, char **argv)
     x(0) = (box.data[2]*image_width - cx)/fx;
     x(1) = (box.data[1]*image_height - cy)/fy;
     x(2) = 0.14;
-        x(3) = 1;
+    x(3) = 1;
 
     //increase the initial value of P can increase the speed of convergence
     Eigen::MatrixXd P_init;
@@ -1008,7 +1008,7 @@ int main(int argc, char **argv)
             x(0) = (box.data[2]*image_width - cx)/fx;
             x(1) = (box.data[1]*image_height - cy)/fy;
             x(2) = 1/sqrt(((model_width*model_height)/(box.data[4]*image_width*box.data[3]*image_height))*fx*fy);
-                        x(3) = 1;
+            x(3) = 1;
             P = P_init;
             R = measurement_noise;
             Q = process_noise;
@@ -1098,9 +1098,9 @@ int main(int argc, char **argv)
 
         noise_estimate(100);
         //if(Q(6,6)<0.002)
-            //Q(6,6) = 0.002;
+        //Q(6,6) = 0.002;
         //if(Q(7,7)<0.002)
-            //Q(7,7) = 0.002;
+        //Q(7,7) = 0.002;
         //if(Q(8,8)<0.002)
         //Q(8,8) = 0.002;
 
@@ -1209,16 +1209,16 @@ int main(int argc, char **argv)
                 follow(vir1,host_mocap,&vs,0,0);
                 ibvs(vir1, box, host_mocap, &vs, dt);
             }
-//            else
-//            {
-//                ROS_INFO("ukf mode");
-//                vir1.x = 0;
-//                vir1.y = 7.5;
-//                vir1.z = 0.7;
-//                follow(vir1,host_mocap,&vs,0,0);
-//                ibvs_ukf(vir1, x, host_mocap, &vs, dt);
-//                //pbvs_ukf(x,host_mocap,&vs,0,7.5);
-//            }
+            //            else
+            //            {
+            //                ROS_INFO("ukf mode");
+            //                vir1.x = 0;
+            //                vir1.y = 7.5;
+            //                vir1.z = 0.7;
+            //                follow(vir1,host_mocap,&vs,0,0);
+            //                ibvs_ukf(vir1, x, host_mocap, &vs, dt);
+            //                //pbvs_ukf(x,host_mocap,&vs,0,7.5);
+            //            }
         }
         //ROS_INFO("drone: x:%.3f  y:%.3f  z:%.3f", host_mocap.pose.position.x, host_mocap.pose.position.y, host_mocap.pose.position.z);
         //ROS_INFO("car:   x:%.3f  y:%.3f  z:%.3f", car_pose.pose.position.x, car_pose.pose.position.y, car_pose.pose.position.z);
@@ -1227,21 +1227,21 @@ int main(int argc, char **argv)
         measure_value.feature.y = (host_mocap.pose.position.z - car_pose.pose.position.z)/(host_mocap.pose.position.y - car_pose.pose.position.y);
         measure_value.feature.z = (host_mocap.pose.position.y - car_pose.pose.position.y);
         measure_value.target_pose.x = model_width*model_height;
-//        measure_value.target_pose.x = car_pose.pose.position.x + 1.3827;
-//        measure_value.target_pose.y = car_pose.pose.position.y + 2.03453;
-//        measure_value.target_pose.z = car_pose.pose.position.z + 0.75;
-//        measure_value.target_vel.x = target_gvel(0);
-//        measure_value.target_vel.y = target_gvel(1);
-//        measure_value.target_vel.z = target_gvel(2);
+        //        measure_value.target_pose.x = car_pose.pose.position.x + 1.3827;
+        //        measure_value.target_pose.y = car_pose.pose.position.y + 2.03453;
+        //        measure_value.target_pose.z = car_pose.pose.position.z + 0.75;
+        //        measure_value.target_vel.x = target_gvel(0);
+        //        measure_value.target_vel.y = target_gvel(1);
+        //        measure_value.target_vel.z = target_gvel(2);
         estimate_value.feature.x = x(0);
         estimate_value.feature.y = x(1);
         estimate_value.feature.z = (1/x(2));                            //depth = 1/x(2)
         estimate_value.target_pose.x = x(3);
-//        estimate_value.target_pose.y = x(4);
-//        estimate_value.target_pose.z = x(5);
-//        estimate_value.target_vel.x = x(6);
-//        estimate_value.target_vel.y = x(7);
-//        estimate_value.target_vel.z = x(8);
+        //        estimate_value.target_pose.y = x(4);
+        //        estimate_value.target_pose.z = x(5);
+        //        estimate_value.target_vel.x = x(6);
+        //        estimate_value.target_vel.y = x(7);
+        //        estimate_value.target_vel.z = x(8);
 
 
         measurement_pub.publish(measure_value);

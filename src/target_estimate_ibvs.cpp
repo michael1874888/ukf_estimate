@@ -750,9 +750,9 @@ void ibvs_ukf(vir& vir, Eigen::VectorXd state, geometry_msgs::PoseStamped& host_
     x2 = state(member_x2);
     x3 = state(member_x3);       //meter to millimeter
     depth_Z = 1/x3;
-    t1 = (x1*x1 + x2*x2 + x3*x3 + 1);
-    t2 = x1*x1*x2*x2;
-    t3 = t2;
+//    t1 = (x1*x1 + x2*x2 + x3*x3 + 1);
+//    t2 = x1*x1*x2*x2;
+//    t3 = t2;
     //ROS_INFO("u:%.2f v: %.2f z:%.2f",box_x_center,box_y_center,1/x3);
 
     err_x1 = x1 - (cx - cx)/fx;
@@ -763,6 +763,9 @@ void ibvs_ukf(vir& vir, Eigen::VectorXd state, geometry_msgs::PoseStamped& host_
 
     Le.setZero(3,3);
     Le_inv.setZero(3,3);
+//    Le << 0, x1*x3, -(x1*x1+1),
+//            -x3, x2*x3, -x1*x2,
+//            0, x3*x3, -x1*x3;
     Le << 0, 0, -(x1*x1+1),
             -x3, 0, 0,
             0, x3*x3, 0;

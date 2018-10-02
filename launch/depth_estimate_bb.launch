@@ -16,10 +16,10 @@
 	 <param name="Tdz_ibvs" value="0" />
      <param name="Tdroll_ibvs" value="0.8" />
 
-     <param name="P_init_0" value="800" />
-     <param name="P_init_1" value="800" />
-     <param name="P_init_2" value="800" />
-	 <param name="P_init_3" value="800" />
+     <param name="P_init_0" value="1" />
+     <param name="P_init_1" value="1" />
+     <param name="P_init_2" value="1" />
+	 <param name="P_init_3" value="3" />
 
 	 <param name="measurement_noise_0" value="10" />
      <param name="measurement_noise_1" value="10" />
