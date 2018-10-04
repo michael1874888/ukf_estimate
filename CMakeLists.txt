@@ -133,21 +133,21 @@ include_directories(
 ## Add cmake target dependencies of the library
 ## as an example, code may need to be generated before libraries
 ## either from message generation or dynamic reconfigure
-# add_dependencies(${PROJECT_NAME} ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+
 
 ## Declare a C++ executable
 ## With catkin_make all packages are built within a single CMake context
 ## The recommended prefix ensures that target names across packages don't collide
- add_executable(ukf_sim src/ukf_sim.cpp)
- add_executable(depth_estimate src/depth_estimate.cpp)
+# add_executable(ukf_sim src/ukf_sim.cpp)
+# add_executable(depth_estimate src/depth_estimate.cpp)
  add_executable(depth_estimate_bb src/depth_estimate_bb.cpp)
- add_executable(depth_estimate_move src/depth_estimate_move.cpp)
- add_executable(target_estimate src/target_estimate.cpp)
- add_executable(target_estimate_nobb src/target_estimate_nobb.cpp)
- add_executable(target_estimate_noise src/target_estimate_noise.cpp)
- add_executable(target_estimate_acc src/target_estimate_acc.cpp)
+# add_executable(depth_estimate_move src/depth_estimate_move.cpp)
+# add_executable(target_estimate src/target_estimate.cpp)
+# add_executable(target_estimate_nobb src/target_estimate_nobb.cpp)
+# add_executable(target_estimate_noise src/target_estimate_noise.cpp)
+# add_executable(target_estimate_acc src/target_estimate_acc.cpp)
  add_executable(target_estimate_ibvs src/target_estimate_ibvs.cpp)
- add_executable(coordinate_test src/coordinate_test.cpp)
+# add_executable(coordinate_test src/coordinate_test.cpp)
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
@@ -160,36 +160,39 @@ include_directories(
 # add_dependencies(${PROJECT_NAME}_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Specify libraries to link a library or executable target against
- target_link_libraries(ukf_sim
-   ${catkin_LIBRARIES}
- )
- target_link_libraries(depth_estimate
-   ${catkin_LIBRARIES}
- )
+# target_link_libraries(ukf_sim
+#   ${catkin_LIBRARIES}
+# )
+# target_link_libraries(depth_estimate
+#   ${catkin_LIBRARIES}
+# )
  target_link_libraries(depth_estimate_bb
    ${catkin_LIBRARIES}
  )
- target_link_libraries(depth_estimate_move
-   ${catkin_LIBRARIES}
- )
- target_link_libraries(target_estimate
-   ${catkin_LIBRARIES}
- )
- target_link_libraries(target_estimate_nobb
-   ${catkin_LIBRARIES}
- )
- target_link_libraries(target_estimate_noise
-   ${catkin_LIBRARIES}
- )
- target_link_libraries(target_estimate_acc
-   ${catkin_LIBRARIES}
- )
+# target_link_libraries(depth_estimate_move
+#   ${catkin_LIBRARIES}
+# )
+# target_link_libraries(target_estimate
+#   ${catkin_LIBRARIES}
+# )
+# target_link_libraries(target_estimate_nobb
+#   ${catkin_LIBRARIES}
+# )
+# target_link_libraries(target_estimate_noise
+#   ${catkin_LIBRARIES}
+# )
+# target_link_libraries(target_estimate_acc
+#   ${catkin_LIBRARIES}
+# )
  target_link_libraries(target_estimate_ibvs
    ${catkin_LIBRARIES}
  )
- target_link_libraries(coordinate_test
-   ${catkin_LIBRARIES}
- )
+# target_link_libraries(coordinate_test
+#   ${catkin_LIBRARIES}
+#)
+
+ add_dependencies(depth_estimate_bb ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+ add_dependencies(target_estimate_ibvs ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 #############
 ## Install ##
