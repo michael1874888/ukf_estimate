@@ -11,6 +11,7 @@
 #include <iostream>
 #include <geometry_msgs/Point.h>
 #include <std_msgs/Float32MultiArray.h>
+#include <std_msgs/Float64.h>
 #include <gazebo_msgs/ModelStates.h>
 #include <deque>
 #include <numeric>
@@ -64,6 +65,7 @@ float Tdroll_ibvs = 0;
 float desired_distance = 6.5;							//5500
 float camera_offset = 0;							//0
 float desired_heading = -pi/2;							//-pi/2
+float desired_relative_heading = pi/2;
 
 float err_ux, err_uy, err_uz, err_uroll;
 float err_ux_pre = 0, err_uy_pre = 0, err_uz_pre = 0, err_uroll_pre = 0;	//initialize
@@ -73,6 +75,7 @@ bool ibvs_mode = false;
 bool ukf_mode = false;
 /////////////////////////////////////////////////////
 
+bool measurement_flag = true;
 int drone_idx = 0;
 int car_idx = 0;
 mavros_msgs::State current_state;
@@ -82,6 +85,7 @@ geometry_msgs::PoseStamped car_pose;
 geometry_msgs::Twist car_vel;
 sensor_msgs::Imu imu_data;
 std_msgs::Float32MultiArray box;
+std_msgs::Float64 car_angle;
 typedef struct
 {
     double roll;
@@ -135,6 +139,11 @@ void imu_cb(const sensor_msgs::Imu::ConstPtr &msg){
 
 void box_cb(const std_msgs::Float32MultiArray::ConstPtr& msg) {
     box = *msg;
+    //ROS_INFO("box");
+}
+
+void angle_cb(const std_msgs::Float64::ConstPtr& msg) {
+    car_angle = *msg;
     //ROS_INFO("box");
 }
 ////////////////////UKF Global variable//////////////////
@@ -473,7 +482,10 @@ void correct(Eigen::VectorXd measure){
 
     Kalman_gain = P_xy * (P_yy.inverse());
 
-    x = x_hat + Kalman_gain *(y-y_hat);
+    if(measurement_flag)
+        x = x_hat + Kalman_gain *(y-y_hat);
+    else
+        x = x_hat;
 
     P = P - Kalman_gain*P_yy*(Kalman_gain.transpose());
 
@@ -799,7 +811,7 @@ void ibvs_ukf(vir& vir, Eigen::VectorXd state, geometry_msgs::PoseStamped& host_
 
     errv_cam << 0, command_vel_tmp(0), command_vel_tmp(1);
     errw_cam << 0, command_vel_tmp(2), 0;
-    //cout << "\ncommand_vel_tmp\n" <<command_vel_tmp << "\nerrw_cam\n" <<errw_cam;
+    //errv_body << 0, ((car_angle.data - desired_relative_heading)*depth_Z*image_width/(fov_x*fx)/* - erru*depth_Z*/), 0;
     errv_body << 0, ((rpy_mocap.yaw - desired_heading)*depth_Z*image_width/(fov_x*fx)/* - erru*depth_Z*/), 0;
     errv_cam(0) = (rot_b2c*errv_body)(0);
 
@@ -917,6 +929,7 @@ int main(int argc, char **argv)
     ros::param::get("~topic_box", topic_box);
     ros::Subscriber host_sub = nh.subscribe<gazebo_msgs::ModelStates>("/gazebo/model_states",1,mocap_cb);
     ros::Subscriber imu_sub = nh.subscribe<sensor_msgs::Imu>("/mavros/imu/data",1,imu_cb);
+    ros::Subscriber car_angle_sub = nh.subscribe<std_msgs::Float64>("/car_angle_avg",1,angle_cb);
     ros::Publisher measurement_pub = nh.advertise<ukf_estimate::output>("/measurement_data", 1);
     ros::Publisher estimate_pub = nh.advertise<ukf_estimate::output>("/estimate_data", 1);
     ros::Subscriber bb_box_sub = nh.subscribe<std_msgs::Float32MultiArray>(topic_box, 1, box_cb);
@@ -1158,7 +1171,10 @@ int main(int argc, char **argv)
 
         //execute correct if the target is detected
         if(box.data[0] >= 0.8)
-            correct(measure_vector);
+            measurement_flag = true;
+        else
+            measurement_flag = false;
+        correct(measure_vector);
 
         noise_estimate(100);
         if(Q(6,6)<0.002)
@@ -1195,6 +1211,12 @@ int main(int argc, char **argv)
                 break;
             case 100:    // key right
                 vir1.y -= 0.3;
+                break;
+            case 101:    // increase desired heading
+                desired_relative_heading += 0.1;
+                break;
+            case 113:    // decrease desired heading
+                desired_relative_heading += -0.1;
                 break;
             case 115:    // key origin
             {
@@ -1284,6 +1306,7 @@ int main(int argc, char **argv)
                 //pbvs_ukf(x,host_mocap,&vs,0,7.5);
             }
         }
+        //ROS_INFO("desired_relative_angle: %.3f", desired_relative_heading/pi*180);
         //ROS_INFO("drone: x:%.3f  y:%.3f  z:%.3f", host_mocap.pose.position.x, host_mocap.pose.position.y, host_mocap.pose.position.z);
         //ROS_INFO("car:   x:%.3f  y:%.3f  z:%.3f", car_pose.pose.position.x, car_pose.pose.position.y, car_pose.pose.position.z);
 
