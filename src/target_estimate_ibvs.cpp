@@ -630,9 +630,10 @@ void follow(vir& vir, geometry_msgs::PoseStamped& host_mocap, geometry_msgs::Twi
 
 void ibvs(vir& vir, std_msgs::Float32MultiArray box, geometry_msgs::PoseStamped& host_mocap, geometry_msgs::TwistStamped* vs, float de_time)
 {
-    float xt, yt;
-    float erru, errv;
-    float err_ux_cam, err_uy_cam, err_uz_cam, err_upitch_cam;
+    float x1, x2, x3;
+    float err_x1, err_x2, err_x3;
+    Eigen::MatrixXd Le, Le_inv;
+    Eigen::Vector3d err_features, command_vel_tmp;
     Eigen::Vector3d errv_cam, errw_cam;
     Eigen::Vector3d errv_body;//, errv_global_;
     Eigen::Vector3d vq_cam, vq_global;
@@ -647,6 +648,7 @@ void ibvs(vir& vir, std_msgs::Float32MultiArray box, geometry_msgs::PoseStamped&
 
     //vq_cam << x(6), x(7), x(8);
     vq_global << x(6), x(7), x(8);
+    cout << "\ntarget_gvel\n" <<vq_global;
 
     box_width = box.data[4]*image_width;
     box_height = box.data[3]*image_height;
@@ -658,41 +660,41 @@ void ibvs(vir& vir, std_msgs::Float32MultiArray box, geometry_msgs::PoseStamped&
     box_y_center = box.data[1]*image_height;
     fov_x = 2*atan(image_width/(2*fx));
 
-    xt = (box_x_center - cx)/fx;
-    yt = (box_y_center - cy)/fy;
-    depth_Z = 1000*sqrt((model_true_area/model_image_area)*fx*fy);       //meter to millimeter
+    x1 = (box_x_center - cx)/fx;
+    x2 = (box_y_center - cy)/fy;
+    x3 = 1/sqrt((model_true_area/model_image_area)*fx*fy);
+    depth_Z = 1/x3;
     ROS_INFO("x_center:%.2f y_center: %.2f depth_Z:%.2f",box_x_center,box_y_center,depth_Z);
 
     //ROS_INFO("erru: %.2f errv:%.2f",xt,yt);
 
-    erru = xt - (cx - cx)/fx;
-    errv = yt - ((cy + 0.1*image_height) - cy)/fy;
-    //define a = sqrt(model_true_area/(depth_Z^2)) = sqrt(model_image_area/(fx*fy))
-    //err_a = a - a* = a - a*depth_Z/depth_Z*
+    err_x1 = x1 - (cx - cx)/fx;
+    err_x2 = x2 - ((cy + 0.1*image_height) - cy)/fy;
+    err_x3 = x3 - (1/desired_distance);
 
-    err_uy_cam = depth_Z*errv;
-    err_uz_cam = -depth_Z*(1 - depth_Z/desired_distance);
-    err_upitch_cam = (1/(xt*xt+1))*erru;
-    errv_cam << 0, err_uy_cam, err_uz_cam;
-    errw_cam << 0, err_upitch_cam, 0;
+    err_features << err_x1, err_x2, err_x3;
+
+    Le.setZero(3,3);
+    Le_inv.setZero(3,3);
+//    Le << 0, x1*x3, -(x1*x1+1),
+//            -x3, x2*x3, -x1*x2,
+//            0, x3*x3, -x1*x3;
+    Le << 0, 0, -(x1*x1+1),
+            -x3, 0, 0,
+            0, x3*x3, 0;
+    Le_inv = (((Le.transpose())*Le).inverse())*Le.transpose();
+
+    command_vel_tmp = -1* Eigen::MatrixXd::Identity(3,3)*Le_inv*err_features;       //v = -K*(Le^+)*e = K*((-Le^+)*e)
+
+    errv_cam << 0, command_vel_tmp(0), command_vel_tmp(1);
+    errw_cam << 0, command_vel_tmp(2), 0;
     errv_body << 0, ((rpy_mocap.yaw - desired_heading)*depth_Z*image_width/(fov_x*fx)/* - erru*depth_Z*/), 0;
-    errv_cam = errv_cam + rot_b2c*errv_body;
-    //errv_global = rot_c2g*errv_cam + rot_b2g*errv_body;
-    //errw_global = rot_c2g*errw_cam;
-    //errv_global_ = rot_b2g*errv_body;
-    //errv_global = errv_global +
-    err_ux = errv_cam(0);// + 1000*target_gvel(0);
-    err_uy = errv_cam(1);// + 1000*target_gvel(1);
-    err_uz = errv_cam(2);// + 1000*target_gvel(2);
-    err_uroll = errw_cam(1);
+    errv_cam(0) = (rot_b2c*errv_body)(0);
 
-    ROS_INFO("yaw: %.2f err_uy:%.2f",rpy_mocap.yaw/pi*180,err_uy);
-    //cout << "\nerrv_cam\n" <<errv_cam << "\nerrw_cam\n" <<errw_cam;
-    //cout << "\nerrv_body\n" <<errv_body;
-    //cout << "\nerrv_b2c\n" <<rot_b2c*errv_body;
-    //cout << "\nerrv_global\n" <<errv_global << "\nerrw_global\n" <<errw_global;
-    cout << "\ntarget_gvel\n" <<vq_global;
-    cout << "\nerr_ux: " <<err_ux<< " err_uy: " <<err_uy<< " err_uz: " <<err_uz<< " err_uroll: " <<err_uroll <<"\n";
+    err_ux = errv_cam(0);
+    err_uy = errv_cam(1);
+    err_uz = errv_cam(2);
+    err_uroll = errw_cam(1);
 
     err_ux_sum = err_ux_sum + err_ux;
     err_uy_sum = err_uy_sum + err_uy;
@@ -724,7 +726,7 @@ void ibvs(vir& vir, std_msgs::Float32MultiArray box, geometry_msgs::PoseStamped&
     ROS_INFO("ux: %.3f uy: %.3f uz: %.3f uroll: %.3f",uv_global(0),uv_global(1),uv_global(2),uw_global(2));
     vs->twist.linear.x = uv_global(0) + vq_global(0);//+ target_gvel(0);//_trans;
     vs->twist.linear.y = uv_global(1) + vq_global(1);//+ target_gvel(1);//_trans;
-    vs->twist.linear.z = uv_global(2) + vq_global(2);//+ target_gvel(2);
+    vs->twist.linear.z = uv_global(2);// + vq_global(2);//+ target_gvel(2);
     vs->twist.angular.z = uw_global(2);
     ROS_INFO("vx: %.3f vy: %.3f vz: %.3f",vs->twist.linear.x,vs->twist.linear.y,vs->twist.linear.z);
     vir.x = host_mocap.pose.position.x;
