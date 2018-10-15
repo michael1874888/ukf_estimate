@@ -147,6 +147,7 @@ include_directories(
 # add_executable(target_estimate_noise src/target_estimate_noise.cpp)
 # add_executable(target_estimate_acc src/target_estimate_acc.cpp)
  add_executable(target_estimate_ibvs src/target_estimate_ibvs.cpp)
+ add_executable(yolo_ibvs_ukf src/yolo_ibvs_ukf.cpp)
 # add_executable(coordinate_test src/coordinate_test.cpp)
 
 ## Rename C++ executable without prefix
@@ -187,12 +188,16 @@ include_directories(
  target_link_libraries(target_estimate_ibvs
    ${catkin_LIBRARIES}
  )
+ target_link_libraries(yolo_ibvs_ukf
+   ${catkin_LIBRARIES}
+ )
 # target_link_libraries(coordinate_test
 #   ${catkin_LIBRARIES}
 #)
 
  add_dependencies(depth_estimate_bb ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
  add_dependencies(target_estimate_ibvs ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+ add_dependencies(yolo_ibvs_ukf ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 #############
 ## Install ##
