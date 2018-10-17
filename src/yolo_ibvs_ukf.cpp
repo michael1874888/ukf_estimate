@@ -38,7 +38,7 @@ Eigen::MatrixXd rot_g2c;
 Eigen::MatrixXd rot_b2g;
 Eigen::MatrixXd rot_b2c;
 float fx = 939.709717, fy = 957.962463; //286.02185016085167
-float cx = 255.693475, cy = 257.071801; 							//240.5 135.5
+float cx = 320, cy = 257.071801; 							//240.5 135.5
 float image_width = 640, image_height = 480;			//480*270
 float model_width = 0.44, model_height = 0.13;
 int callback_spin_count = 0;
@@ -61,7 +61,7 @@ float Tdy_ibvs = 0;
 float Tdz_ibvs = 0;
 float Tdroll_ibvs = 0;
 
-float desired_distance = 1.3;							//5500
+float desired_distance = 1.1;							//5500
 float camera_offset = 0;							//0
 float desired_heading = 0;							//-pi/2
 
@@ -73,6 +73,7 @@ bool ibvs_mode = false;
 bool ukf_mode = false;
 /////////////////////////////////////////////////////
 
+bool measurement_flag = true;
 int drone_idx = 0;
 int car_idx = 0;
 mavros_msgs::State current_state;
@@ -489,6 +490,12 @@ void correct(Eigen::VectorXd measure){
 
     Kalman_gain = P_xy * (P_yy.inverse());
 
+    if(!measurement_flag)
+    {
+        y(0) = y_hat(0);
+        y(1) = y_hat(1);
+        y(2) = y_hat(2);
+    }
     x = x_hat + Kalman_gain *(y-y_hat);
 
     P = P - Kalman_gain*P_yy*(Kalman_gain.transpose());
@@ -858,8 +865,8 @@ void ibvs_ukf(vir& vir, Eigen::VectorXd state, geometry_msgs::PoseStamped& host_
 
 
     ROS_INFO("ux: %.3f uy: %.3f uz: %.3f uroll: %.3f",uv_global(0),uv_global(1),uv_global(2),uw_global(2));
-    vs->twist.linear.x = uv_global(0);// + vq_global(0);//+ target_gvel(0);//_trans;
-    vs->twist.linear.y = uv_global(1);// + vq_global(1);//+ target_gvel(1);//_trans;
+    vs->twist.linear.x = uv_global(0) + vq_global(0);//+ target_gvel(0);//_trans;
+    vs->twist.linear.y = uv_global(1) + vq_global(1);//+ target_gvel(1);//_trans;
     vs->twist.linear.z = uv_global(2);// + vq_global(2);//+ target_gvel(2);
     vs->twist.angular.z = uw_global(2);
     ROS_INFO("vx: %.3f vy: %.3f vz: %.3f",vs->twist.linear.x,vs->twist.linear.y,vs->twist.linear.z);
@@ -934,6 +941,7 @@ char getch()
 int main(int argc, char **argv)
 {
     string topic_box;
+    int loop_rate = 20;
     ros::init(argc, argv, "yolo_ibvs_ukf");
     ros::NodeHandle nh;
     ros::param::get("~topic_box", topic_box);
@@ -952,7 +960,7 @@ int main(int argc, char **argv)
     ros::ServiceClient set_mode_client = nh.serviceClient<mavros_msgs::SetMode>("drone1/mavros/set_mode");
     ros::Publisher local_vel_pub = nh.advertise<geometry_msgs::TwistStamped>("drone1/mavros/setpoint_velocity/cmd_vel", 1);
 
-    ros::Rate rate(20);
+    ros::Rate rate(loop_rate);
     //ros::AsyncSpinner spinner(2);   //0 means use threads of CPU numbers
     //spinner.start();
 
@@ -974,8 +982,9 @@ int main(int argc, char **argv)
     target_g2cvel.setZero(3);
     target_g2cwvel.setZero(3);
     ros::Time current_time = ros::Time::now();
-    ros::Time previous_time = ros::Time::now();
+    ros::Time previous_time = ros::Time::now();    
     geometry_msgs::TwistStamped vs;
+    int measurement_false_count = 0;
     vir vir1;
 
     ros::param::get("~KPx_ibvs", KPx_ibvs);
@@ -1181,10 +1190,23 @@ int main(int argc, char **argv)
 
         //execute correct if the target is detected
         if(box.data[0] >= 0.8)
-            correct(measure_vector);
+        {
+            measurement_flag = true;
+            measurement_false_count = 0;
+        }
+        else
+        {
+            if(measurement_false_count > 2*loop_rate)
+                ibvs_mode = false;
+
+            measurement_flag = false;
+            measurement_false_count++;
+        }
+
+        correct(measure_vector);
 
         if(box.data[0] >= 0.8 || callback_spin_count >=80)
-            noise_estimate(20);
+            noise_estimate(2*loop_rate);
         //if(Q(6,6)<0.002)
             //Q(6,6) = 0.002;
         //if(Q(7,7)<0.002)
