@@ -982,7 +982,7 @@ int main(int argc, char **argv)
     target_g2cvel.setZero(3);
     target_g2cwvel.setZero(3);
     ros::Time current_time = ros::Time::now();
-    ros::Time previous_time = ros::Time::now();    
+    ros::Time previous_time = ros::Time::now();
     geometry_msgs::TwistStamped vs;
     int measurement_false_count = 0;
     vir vir1;
