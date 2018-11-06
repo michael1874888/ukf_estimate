@@ -1324,9 +1324,9 @@ int main(int argc, char **argv)
         measure_value.feature.x = (host_mocap.pose.position.x - car_pose.pose.position.x)/(host_mocap.pose.position.y - car_pose.pose.position.y);
         measure_value.feature.y = (host_mocap.pose.position.z - car_pose.pose.position.z)/(host_mocap.pose.position.y - car_pose.pose.position.y);
         measure_value.feature.z = (host_mocap.pose.position.y - car_pose.pose.position.y);
-        measure_value.target_pose.x = car_pose.pose.position.x;
+        measure_value.target_pose.x = car_pose.pose.position.x - 0.2;
         measure_value.target_pose.y = car_pose.pose.position.y;
-        measure_value.target_pose.z = car_pose.pose.position.z + model_height/2;
+        measure_value.target_pose.z = car_pose.pose.position.z + 0.03;
         measure_value.target_vel.x = target_gvel(0);
         measure_value.target_vel.y = target_gvel(1);
         measure_value.target_vel.z = target_gvel(2);

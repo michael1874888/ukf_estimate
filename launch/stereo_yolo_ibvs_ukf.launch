@@ -4,9 +4,9 @@
      <param name="topic_box" value="/YOLO/box" />
 
 <!--PID in camera frame-->
-	 <param name="KPx_ibvs" value="0.8" />
-     <param name="KPy_ibvs" value="0.5" />		<!--pseudo inverse of Le=3x6, Kpy_ibvs=3.0-->
-     <param name="KPz_ibvs" value="0.5" />
+	 <param name="KPx_ibvs" value="0.6" />
+     <param name="KPy_ibvs" value="0.6" />		<!--pseudo inverse of Le=3x6, Kpy_ibvs=3.0-->
+     <param name="KPz_ibvs" value="0.6" />
 	 <param name="KProll_ibvs" value="1.6" />
 	 <param name="Tix_ibvs" value="10000" />
      <param name="Tiy_ibvs" value="10000" />
