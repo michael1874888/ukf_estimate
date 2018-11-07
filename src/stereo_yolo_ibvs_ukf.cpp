@@ -926,7 +926,7 @@ char getch()
 int main(int argc, char **argv)
 {
     string topic_box;
-    int loop_rate = 20;
+    int loop_rate = 30;
     ros::init(argc, argv, "yolo_ibvs_ukf");
     ros::NodeHandle nh;
     ros::param::get("~topic_box", topic_box);
@@ -1324,7 +1324,7 @@ int main(int argc, char **argv)
         measure_value.feature.x = (host_mocap.pose.position.x - car_pose.pose.position.x)/(host_mocap.pose.position.y - car_pose.pose.position.y);
         measure_value.feature.y = (host_mocap.pose.position.z - car_pose.pose.position.z)/(host_mocap.pose.position.y - car_pose.pose.position.y);
         measure_value.feature.z = (host_mocap.pose.position.y - car_pose.pose.position.y);
-        measure_value.target_pose.x = car_pose.pose.position.x - 0.2;
+        measure_value.target_pose.x = car_pose.pose.position.x;
         measure_value.target_pose.y = car_pose.pose.position.y;
         measure_value.target_pose.z = car_pose.pose.position.z + 0.03;
         measure_value.target_vel.x = target_gvel(0);
@@ -1333,7 +1333,7 @@ int main(int argc, char **argv)
         estimate_value.feature.x = x(0);
         estimate_value.feature.y = x(1);
         estimate_value.feature.z = (1/x(2));                            //depth = 1/x(2)
-        estimate_value.target_pose.x = x(3);
+        estimate_value.target_pose.x = x(3) + 0.25;
         estimate_value.target_pose.y = x(4);
         estimate_value.target_pose.z = x(5);
         estimate_value.target_vel.x = x(6);
