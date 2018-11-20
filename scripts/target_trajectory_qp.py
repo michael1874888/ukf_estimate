@@ -18,10 +18,10 @@ t = sym.symbols("t")
 time = deque(maxlen = window_length)
 target_position = deque(maxlen = window_length)
 target_velocity = deque(maxlen = window_length)
-Ti0 = deque(maxlen = window_length)
-Tie0 = deque(maxlen = window_length)
-Ti1 = deque(maxlen = window_length)
-Tie1 = deque(maxlen = window_length)
+#Ti0 = deque(maxlen = window_length)
+#Tie0 = deque(maxlen = window_length)
+#Ti1 = deque(maxlen = window_length)
+#Tie1 = deque(maxlen = window_length)
 Ti_sym = sym.zeros((poly_degree+1),1)
 target_data = output()
 ti = 0.
@@ -95,28 +95,27 @@ def quadratic_progamming():
             
             Ti_sym_diff = Ti_sym.diff(t)
             
-            for i in range(window_length):
-                #print(i)
-                #print(time[i])
-    	        Ti0_ = Ti_sym.subs(t, time[i])
-                Ti0.append(Ti0_)
-                Tie0.append(Ti0_*Ti0_.T)
-                Ti1_ = Ti_sym_diff.subs(t, time[i])
-                Ti1.append(Ti1_)
-                Tie1.append(Ti1_*Ti1_.T)
-
-                
-            Ti_sym_diff2 = Ti_sym_diff.diff(t)
-            Tir_ = Ti_sym_diff2*Ti_sym_diff2.T
-            Tir = Tir_.integrate((t,time[0],time[-1]))
-		    #Tir = np.array(Tir).astype(np.float64)
-
             P_ = sym.zeros((poly_degree+1),(poly_degree+1))
             q = sym.zeros((poly_degree+1), 1)
             
             for i in range(window_length):
-                P_ = P_ + Tie0[i] + Tie1[i]
-                q = q + -2*target_position[i]*Ti0[i] + -2*target_velocity[i]*Ti1[i]
+                #print(i)
+                #print(time[i])
+    	        Ti0 = Ti_sym.subs(t, time[i])
+                #Ti0.append(Ti0_)
+                Tie0 = Ti0*Ti0.T
+                Ti1 = Ti_sym_diff.subs(t, time[i])
+                #Ti1.append(Ti1_)
+                Tie1 = Ti1*Ti1.T
+                P_ = P_ + Tie0 + Tie1
+                q = q + -2*target_position[i]*Ti0 + -2*target_velocity[i]*Ti1
+
+                
+            Ti_sym_diff2 = Ti_sym_diff.diff(t)
+            Tir_ = Ti_sym_diff2*Ti_sym_diff2.T
+            Tir_ = Tir_.integrate(t)
+            Tir = Tir_.subs(t,time[-1]) - Tir_.subs(t,time[0])
+		    #Tir = np.array(Tir).astype(np.float64)
             
             P_ = P_ + window_length*regulator_weight*Tir
 		    #extract 1/2 to be the standard form, so we need to multiply 2 to the original formula
