@@ -8,15 +8,19 @@ import sympy as sym
 from collections import deque
 import matplotlib.pyplot as plt
 import time
-from geometry_msgs.msg import Vector3
+from geometry_msgs.msg import Point
 
 poly_degree = 5
 window_length = 30
-regulator_weight = 0.01
+regulator_weight = 0.00
 
 time = deque(maxlen = window_length)
 target_position = deque(maxlen = window_length)
 target_velocity = deque(maxlen = window_length)
+#target_position_y = deque(maxlen = window_length)
+#target_velocity_y = deque(maxlen = window_length)
+#target_position_z = deque(maxlen = window_length)
+#target_velocity_z = deque(maxlen = window_length)
 
 target_data = output()
 ti = 0.
@@ -59,18 +63,23 @@ def callback(msg):
 
 def quadratic_progamming():
 
-    global ti, time, P_, q
+    global ti, time, P_, qx, qy, qz
     
     rospy.Subscriber("/estimate_data", output, callback)   
-    pub = rospy.Publisher('qp_pos', Vector3, queue_size=1)
+    pub_pos = rospy.Publisher('target_qp_pos', Point, queue_size=1)
+    pub_vel = rospy.Publisher('target_qp_vel', Point, queue_size=1)
+    pub_acc = rospy.Publisher('target_qp_acc', Point, queue_size=1)
 
-    target_qp = Vector3()
+    target_qp_pos = Point()
+    target_qp_vel = Point()
+    target_qp_acc = Point()
+    
     while not rospy.is_shutdown():
         #time1 = rospy.get_time()
         if callback_flag is True:
             time.append(ti)
-            target_position.append(target_data.target_pose.y)
-            target_velocity.append(target_data.target_vel.y)
+            target_position.append(target_data.target_pose)
+            target_velocity.append(target_data.target_vel)
             #print(time)
             #print(len(time))
             #print(target_position)
@@ -85,7 +94,9 @@ def quadratic_progamming():
             
             
             P_ = np.zeros(((poly_degree+1),(poly_degree+1)))
-            q = np.zeros(((poly_degree+1), 1))
+            qx = np.zeros(((poly_degree+1), 1))
+            qy = np.zeros(((poly_degree+1), 1))
+            qz = np.zeros(((poly_degree+1), 1))
             
             for i in range(window_length):
             
@@ -95,12 +106,14 @@ def quadratic_progamming():
                 Ti1 = np.mat([[0],[1],[2*t],[3*t**2],[4*t**3],[5*t**4]])
                 Tie1 = Ti1*Ti1.T
                 P_ = P_ + Tie0 + Tie1
-                q = q + -2*target_position[i]*Ti0 + -2*target_velocity[i]*Ti1
-
+                qx = qx + -2*target_position[i].x*Ti0 + -2*target_velocity[i].x*Ti1
+                qy = qy + -2*target_position[i].y*Ti0 + -2*target_velocity[i].y*Ti1
+                qz = qz + -2*target_position[i].z*Ti0 + -2*target_velocity[i].z*Ti1
 
             t_last = time[-1]
             t_init = time[0]
             
+            #Tir for acceleration regulator
             Tir_last = np.mat([[0, 0,       0,       0,          0,          0],
                                [0, 0,       0,       0,          0,          0],
                                [0, 0,     4*t_last,  6*t_last**2,     8*t_last**3,    10*t_last**4],
@@ -116,6 +129,7 @@ def quadratic_progamming():
                                [0, 0,  8*t_init**3, 18*t_init**4, 144*t_init**5/5,    40*t_init**6],
                                [0, 0, 10*t_init**4, 24*t_init**5,    40*t_init**6, 400*t_init**7/7]])
             '''
+            #Tir for jerk regulator
             Tir_last = np.mat([[0, 0, 0,        0,        0,        0],
                                [0, 0, 0,        0,        0,        0],
                                [0, 0, 0,        0,        0,        0],
@@ -134,8 +148,6 @@ def quadratic_progamming():
                                
             '''                   
             Tir = Tir_last - Tir_init
-    
-		    #Tir = np.array(Tir).astype(np.float64)
             
             P_ = P_ + window_length*regulator_weight*Tir
 		    #extract 1/2 to be the standard form, so we need to multiply 2 to the original formula
@@ -144,19 +156,37 @@ def quadratic_progamming():
             #print(q)
 
 
-            coeff = cvxopt_solve_qp(P, q)
+            coeff_x = cvxopt_solve_qp(P, qx)
+            coeff_y = cvxopt_solve_qp(P, qy)
+            coeff_z = cvxopt_solve_qp(P, qz)
 
-            target_pos_poly = coeff[0] + coeff[1]*t_last + coeff[2]*t_last**2 + coeff[3]*t_last**3 + coeff[4]*t_last**4 + coeff[5]*t_last**5
-            target_vel_poly = coeff[1] + 2*coeff[2]*t_last + 3*coeff[3]*t_last**2 + 4*coeff[4]*t_last**3 + 5*coeff[5]*t_last**4
-            target_acc_poly = 2*coeff[2] + 3*2*coeff[3]*t_last + 4*3*coeff[4]*t_last**2 + 5*4*coeff[5]*t_last**3
+            target_pos_poly_x = coeff_x[0] + coeff_x[1]*t_last + coeff_x[2]*t_last**2 + coeff_x[3]*t_last**3 + coeff_x[4]*t_last**4 + coeff_x[5]*t_last**5
+            target_vel_poly_x = coeff_x[1] + 2*coeff_x[2]*t_last + 3*coeff_x[3]*t_last**2 + 4*coeff_x[4]*t_last**3 + 5*coeff_x[5]*t_last**4
+            target_acc_poly_x = 2*coeff_x[2] + 3*2*coeff_x[3]*t_last + 4*3*coeff_x[4]*t_last**2 + 5*4*coeff_x[5]*t_last**3
             
-            target_qp.x = target_pos_poly
-            target_qp.y = target_vel_poly
-            target_qp.z = target_acc_poly
+            target_pos_poly_y = coeff_y[0] + coeff_y[1]*t_last + coeff_y[2]*t_last**2 + coeff_y[3]*t_last**3 + coeff_y[4]*t_last**4 + coeff_y[5]*t_last**5
+            target_vel_poly_y = coeff_y[1] + 2*coeff_y[2]*t_last + 3*coeff_y[3]*t_last**2 + 4*coeff_y[4]*t_last**3 + 5*coeff_y[5]*t_last**4
+            target_acc_poly_y = 2*coeff_y[2] + 3*2*coeff_y[3]*t_last + 4*3*coeff_y[4]*t_last**2 + 5*4*coeff_y[5]*t_last**3
+            
+            target_pos_poly_z = coeff_z[0] + coeff_z[1]*t_last + coeff_z[2]*t_last**2 + coeff_z[3]*t_last**3 + coeff_z[4]*t_last**4 + coeff_z[5]*t_last**5
+            target_vel_poly_z = coeff_z[1] + 2*coeff_z[2]*t_last + 3*coeff_z[3]*t_last**2 + 4*coeff_z[4]*t_last**3 + 5*coeff_z[5]*t_last**4
+            target_acc_poly_z = 2*coeff_z[2] + 3*2*coeff_z[3]*t_last + 4*3*coeff_z[4]*t_last**2 + 5*4*coeff_z[5]*t_last**3
+
+            target_qp_pos.x = target_pos_poly_x
+            target_qp_pos.y = target_pos_poly_y
+            target_qp_pos.z = target_pos_poly_z
+            target_qp_vel.x = target_vel_poly_x
+            target_qp_vel.y = target_vel_poly_y
+            target_qp_vel.z = target_vel_poly_z
+            target_qp_acc.x = target_acc_poly_x
+            target_qp_acc.y = target_acc_poly_y
+            target_qp_acc.z = target_acc_poly_z
             #print(coeff)
             #print(time)
 
-            pub.publish(target_qp)
+            pub_pos.publish(target_qp_pos)
+            pub_vel.publish(target_qp_vel)
+            pub_acc.publish(target_qp_acc)
             #time2 = rospy.get_time()
             #print((time2-time1))
         rate.sleep()

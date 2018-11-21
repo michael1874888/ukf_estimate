@@ -11,8 +11,8 @@ import time
 from geometry_msgs.msg import Vector3
 
 poly_degree = 3
-window_length = 30
-regulator_weight = 0.01
+window_length = 600
+regulator_weight = 0.00
 
 time = deque(maxlen = window_length)
 target_position = deque(maxlen = window_length)
@@ -101,6 +101,7 @@ def quadratic_progamming():
             t_last = time[-1]
             t_init = time[0]
             
+            #Tir for acceleration regulator
             Tir_last = np.mat([[0, 0,           0,            0],
                                [0, 0,           0,            0],
                                [0, 0,    4*t_last,  6*t_last**2],

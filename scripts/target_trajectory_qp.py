@@ -34,7 +34,7 @@ current_time = rospy.get_time()
 previous_time = rospy.get_time()
 dt = 0.
 
-
+#Solve QP problem
 def cvxopt_solve_qp(P, q, G=None, h=None, A=None, b=None):
     P = .5 * (P + P.T)  # make sure P is symmetric
     args = [matrix(P), matrix(q)]
@@ -47,7 +47,7 @@ def cvxopt_solve_qp(P, q, G=None, h=None, A=None, b=None):
         return None
     return np.array(sol['x']).reshape((P.shape[1],))
 
-
+#Estimation data of the target from UKF
 def callback(msg):
     global callback_flag, target_data, current_time, previous_time, ti
     callback_flag = True
@@ -72,6 +72,7 @@ def quadratic_progamming():
     target_qp = Vector3()
     while not rospy.is_shutdown():
         #time1 = rospy.get_time()
+        #Start if the target data is subscribed
         if callback_flag is True:
             time.append(ti)
             target_position.append(target_data.target_pose.y)
@@ -82,6 +83,7 @@ def quadratic_progamming():
 
         if len(time) == window_length:
 
+            #Shift the time stamp
             ti = ti - time[0]
             
             t0 = time[0]
@@ -89,7 +91,7 @@ def quadratic_progamming():
                 time[i] = time[i] - t0
             
             #print(time)
-
+            #Declare Ti with symbol "t"
             for i in range((poly_degree+1)):
 			    Ti_sym[i] = t**i
             
@@ -98,6 +100,7 @@ def quadratic_progamming():
             P_ = sym.zeros((poly_degree+1),(poly_degree+1))
             q = sym.zeros((poly_degree+1), 1)
             
+            #Calculate Ti and Te to determine P and q for CVXOPT
             for i in range(window_length):
                 #print(i)
                 #print(time[i])
@@ -110,7 +113,8 @@ def quadratic_progamming():
                 P_ = P_ + Tie0 + Tie1
                 q = q + -2*target_position[i]*Ti0 + -2*target_velocity[i]*Ti1
 
-                
+            #Calculate Tir to determine P for CVXOPT
+            #Tir for acceleration regulator    
             Ti_sym_diff2 = Ti_sym_diff.diff(t)
             Tir_ = Ti_sym_diff2*Ti_sym_diff2.T
             Tir_ = Tir_.integrate(t)
