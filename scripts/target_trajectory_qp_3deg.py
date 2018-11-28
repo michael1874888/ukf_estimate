@@ -12,8 +12,8 @@ from geometry_msgs.msg import Point
 from std_msgs.msg import Float32MultiArray
 
 poly_degree = 3
-window_length = 100
-regulator_weight = 1
+window_length = 500
+regulator_weight = 0.1
 
 time = deque(maxlen = window_length)
 target_position = deque(maxlen = window_length)
@@ -24,7 +24,7 @@ ti = 0.
 callback_flag = False
 
 rospy.init_node('target_trajectory_qp', anonymous=True)
-rate = rospy.Rate(30)
+rate = rospy.Rate(50)
 
 current_time = rospy.get_time()
 previous_time = rospy.get_time()

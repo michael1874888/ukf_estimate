@@ -86,6 +86,9 @@ geometry_msgs::Twist car_vel;
 sensor_msgs::Imu imu_data;
 std_msgs::Float32MultiArray box;
 std_msgs::Float64 car_angle;
+//geometry_msgs::Point qp_pos;
+//geometry_msgs::Point qp_vel;
+geometry_msgs::Point qp_acc;
 typedef struct
 {
     double roll;
@@ -144,6 +147,21 @@ void box_cb(const std_msgs::Float32MultiArray::ConstPtr& msg) {
 
 void angle_cb(const std_msgs::Float64::ConstPtr& msg) {
     car_angle = *msg;
+    //ROS_INFO("box");
+}
+/*
+void qp_pos_cb(const geometry_msgs::Point::ConstPtr& msg) {
+    qp_pos = *msg;
+    //ROS_INFO("box");
+}
+
+void qp_vel_cb(const geometry_msgs::Point::ConstPtr& msg) {
+    qp_vel = *msg;
+    //ROS_INFO("box");
+}
+*/
+void qp_acc_cb(const geometry_msgs::Point::ConstPtr& msg) {
+    qp_acc = *msg;
     //ROS_INFO("box");
 }
 ////////////////////UKF Global variable//////////////////
@@ -256,12 +274,22 @@ Eigen::MatrixXd dynamics(Eigen::MatrixXd sigma_state){
         double x2 = sigma_state(member_x2,i);
         double x3 = sigma_state(member_x3,i);
         Eigen::VectorXd q_pose;
-        q_pose.setZero(3);
-        q_pose << sigma_state(member_xq,i), sigma_state(member_yq,i), sigma_state(member_zq,i);
         Eigen::VectorXd vq;
-        vq.setZero(3);
-        vq << sigma_state(member_vqx,i), sigma_state(member_vqy,i), sigma_state(member_vqz,i);
         Eigen::Vector3d vq_cam;
+        q_pose.setZero(3);
+        vq.setZero(3);
+        //if(measurement_flag)
+        //{
+            //ROS_INFO("1");
+            q_pose << sigma_state(member_xq,i), sigma_state(member_yq,i), sigma_state(member_zq,i);
+            vq << sigma_state(member_vqx,i), sigma_state(member_vqy,i), sigma_state(member_vqz,i);
+        //}
+        /*else
+        {
+            ROS_INFO("2: %.3f",qp_vel.x);
+            q_pose << qp_pos.x, qp_pos.y, qp_pos.z;
+            vq << qp_vel.x, qp_vel.y, qp_vel.z;
+        }*/
         vq_cam = rot_g2c*vq;
         //vq << target_g2cvel(0), target_g2cvel(1), target_g2cvel(2);
         double x1_ ;
@@ -276,7 +304,15 @@ Eigen::MatrixXd dynamics(Eigen::MatrixXd sigma_state){
         x2_ = x2 + (vq_cam(1)*x3 - vq_cam(2)*x2*x3 + (camera_vel(2)*x2 - camera_vel(1))*x3 - camera_wvel(2)*x1 + camera_wvel(0) + camera_wvel(0)*x2*x2 - camera_wvel(1)*x1*x2)*dt;
         x3_ = x3 + (-vq_cam(2)*x3*x3 + camera_vel(2)*x3*x3 - (camera_wvel(1)*x1 - camera_wvel(0)*x2)*x3)*dt;
         q_pose_ = q_pose + vq*dt;
-        vq_ = vq;
+        if(measurement_flag)
+        {
+            vq_ = vq;
+        }
+        else
+        {
+            Eigen::Vector3d aq(qp_acc.x, qp_acc.y, qp_acc.z);
+            vq_ = vq + aq*dt;
+        }
         //ROS_INFO("vq: x:%.3f y:%.3f z:%.3f",vq_(0),vq_(1),vq_(2));
 
 
@@ -482,10 +518,13 @@ void correct(Eigen::VectorXd measure){
 
     Kalman_gain = P_xy * (P_yy.inverse());
 
-    if(measurement_flag)
-        x = x_hat + Kalman_gain *(y-y_hat);
-    else
-        x = x_hat;
+    if(!measurement_flag)
+    {
+        y(0) = y_hat(0);
+        y(1) = y_hat(1);
+        y(2) = y_hat(2);
+    }
+    x = x_hat + Kalman_gain *(y-y_hat);
 
     P = P - Kalman_gain*P_yy*(Kalman_gain.transpose());
 
@@ -926,12 +965,15 @@ char getch()
 int main(int argc, char **argv)
 {
     string topic_box;
+    int loop_rate = 50;
     ros::init(argc, argv, "target_estimate_ibvs");
     ros::NodeHandle nh;
     ros::param::get("~topic_box", topic_box);
     ros::Subscriber host_sub = nh.subscribe<gazebo_msgs::ModelStates>("/gazebo/model_states",1,mocap_cb);
     ros::Subscriber imu_sub = nh.subscribe<sensor_msgs::Imu>("/mavros/imu/data",1,imu_cb);
-    ros::Subscriber car_angle_sub = nh.subscribe<std_msgs::Float64>("/car_angle_avg",1,angle_cb);
+    //ros::Subscriber qp_pos_sub = nh.subscribe<geometry_msgs::Point>("/target_qp_pos",1,qp_pos_cb);
+    //ros::Subscriber qp_vel_sub = nh.subscribe<geometry_msgs::Point>("/target_qp_vel",1,qp_vel_cb);
+    ros::Subscriber qp_acc_sub = nh.subscribe<geometry_msgs::Point>("/target_qp_acc",1,qp_acc_cb);
     ros::Publisher measurement_pub = nh.advertise<ukf_estimate::output>("/measurement_data", 1);
     ros::Publisher estimate_pub = nh.advertise<ukf_estimate::output>("/estimate_data", 1);
     ros::Subscriber bb_box_sub = nh.subscribe<std_msgs::Float32MultiArray>(topic_box, 1, box_cb);
@@ -942,7 +984,7 @@ int main(int argc, char **argv)
     ros::ServiceClient set_mode_client = nh.serviceClient<mavros_msgs::SetMode>("mavros/set_mode");
     ros::Publisher local_vel_pub = nh.advertise<geometry_msgs::TwistStamped>("mavros/setpoint_velocity/cmd_vel", 1);
 
-    ros::Rate rate(50);
+    ros::Rate rate(loop_rate);
     //ros::AsyncSpinner spinner(2);   //0 means use threads of CPU numbers
     //spinner.start();
 
@@ -966,6 +1008,7 @@ int main(int argc, char **argv)
     ros::Time current_time = ros::Time::now();
     ros::Time previous_time = ros::Time::now();
     geometry_msgs::TwistStamped vs;
+    int measurement_false_count = 0;
     vir vir1;
 
     ros::param::get("~KPx_ibvs", KPx_ibvs);
@@ -1173,12 +1216,21 @@ int main(int argc, char **argv)
 
         //execute correct if the target is detected
         if(box.data[0] >= 0.8)
+        {
             measurement_flag = true;
+            measurement_false_count = 0;
+        }
         else
+        {
+            if(measurement_false_count > 7*loop_rate)
+                ibvs_mode = false;
+
             measurement_flag = false;
+            measurement_false_count++;
+        }
         correct(measure_vector);
 
-        noise_estimate(100);
+        noise_estimate(2*loop_rate);
         if(Q(6,6)<0.002)
             Q(6,6) = 0.002;
         if(Q(7,7)<0.002)
