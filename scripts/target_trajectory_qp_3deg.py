@@ -1,6 +1,7 @@
 import rospy
 from std_msgs.msg import Float64
 from ukf_estimate.msg import output
+from ukf_estimate.msg import Trajectory3D
 import cvxopt
 from cvxopt import matrix
 import numpy as np
@@ -10,10 +11,18 @@ import matplotlib.pyplot as plt
 import time
 from geometry_msgs.msg import Point
 from std_msgs.msg import Float32MultiArray
+import argparse
+
+
+parser = argparse.ArgumentParser(prog="python target_trajectory_qp_3deg.py")
+parser.add_argument("-r","--loop_rate", dest="rate", default=30, help="loop_rate")
+parser.add_argument("-l","--length", dest="length", default=300, help="window_length")
+parser.add_argument("-w","--weight", dest="weight", default=0.1, help="loop_rate")
+args = parser.parse_args()
 
 poly_degree = 3
-window_length = 500
-regulator_weight = 0.1
+window_length = int(args.length)
+regulator_weight = float(args.weight)
 
 time = deque(maxlen = window_length)
 target_position = deque(maxlen = window_length)
@@ -24,7 +33,10 @@ ti = 0.
 callback_flag = False
 
 rospy.init_node('target_trajectory_qp', anonymous=True)
-rate = rospy.Rate(50)
+rate = rospy.Rate(int(args.rate))
+#print(window_length)
+#print(regulator_weight)
+#print(rate)
 
 current_time = rospy.get_time()
 previous_time = rospy.get_time()
@@ -77,13 +89,15 @@ def quadratic_progamming():
     
     estimate_sub = rospy.Subscriber("/estimate_data", output, callback)
     box_sub = rospy.Subscriber("/YOLO/box", Float32MultiArray, callback2)
-    pub_pos = rospy.Publisher('target_qp_pos', Point, queue_size=1)
-    pub_vel = rospy.Publisher('target_qp_vel', Point, queue_size=1)
-    pub_acc = rospy.Publisher('target_qp_acc', Point, queue_size=1)
-
+    pub_traj = rospy.Publisher('target_qp', Trajectory3D, queue_size=1)
+    #pub_vel = rospy.Publisher('target_qp_vel', Point, queue_size=1)
+    #pub_acc = rospy.Publisher('target_qp_acc', Point, queue_size=1)
+    '''
     target_qp_pos = Point()
     target_qp_vel = Point()
     target_qp_acc = Point()
+    '''
+    target_qp = Trajectory3D()
     
     while not rospy.is_shutdown():
         #time1 = rospy.get_time()
@@ -168,21 +182,21 @@ def quadratic_progamming():
                 target_acc_poly_y = 2*coeff_y[2] + 3*2*coeff_y[3]*t_last
                 target_acc_poly_z = 2*coeff_z[2] + 3*2*coeff_z[3]*t_last
                 
-                target_qp_pos.x = target_pos_poly_x
-                target_qp_pos.y = target_pos_poly_y
-                target_qp_pos.z = target_pos_poly_z
-                target_qp_vel.x = target_vel_poly_x
-                target_qp_vel.y = target_vel_poly_y
-                target_qp_vel.z = target_vel_poly_z
-                target_qp_acc.x = target_acc_poly_x
-                target_qp_acc.y = target_acc_poly_y
-                target_qp_acc.z = target_acc_poly_z
+                target_qp.pos.x = target_pos_poly_x
+                target_qp.pos.y = target_pos_poly_y
+                target_qp.pos.z = target_pos_poly_z
+                target_qp.vel.x = target_vel_poly_x
+                target_qp.vel.y = target_vel_poly_y
+                target_qp.vel.z = target_vel_poly_z
+                target_qp.acc.x = target_acc_poly_x
+                target_qp.acc.y = target_acc_poly_y
+                target_qp.acc.z = target_acc_poly_z
                 #print(coeff)
                 #print(time)
 
-                pub_pos.publish(target_qp_pos)
-                pub_vel.publish(target_qp_vel)
-                pub_acc.publish(target_qp_acc)
+                pub_traj.publish(target_qp)
+                #pub_vel.publish(target_qp_vel)
+                #pub_acc.publish(target_qp_acc)
                 #time2 = rospy.get_time()
                 #print((time2-time1))
                 
@@ -203,21 +217,21 @@ def quadratic_progamming():
                 target_acc_poly_y = 2*coeff_y[2] + 3*2*coeff_y[3]*t_last
                 target_acc_poly_z = 2*coeff_z[2] + 3*2*coeff_z[3]*t_last
             
-                target_qp_pos.x = target_pos_poly_x
-                target_qp_pos.y = target_pos_poly_y
-                target_qp_pos.z = target_pos_poly_z
-                target_qp_vel.x = target_vel_poly_x
-                target_qp_vel.y = target_vel_poly_y
-                target_qp_vel.z = target_vel_poly_z
-                target_qp_acc.x = target_acc_poly_x
-                target_qp_acc.y = target_acc_poly_y
-                target_qp_acc.z = target_acc_poly_z
+                target_qp.pos.x = target_pos_poly_x
+                target_qp.pos.y = target_pos_poly_y
+                target_qp.pos.z = target_pos_poly_z
+                target_qp.vel.x = target_vel_poly_x
+                target_qp.vel.y = target_vel_poly_y
+                target_qp.vel.z = target_vel_poly_z
+                target_qp.acc.x = target_acc_poly_x
+                target_qp.acc.y = target_acc_poly_y
+                target_qp.acc.z = target_acc_poly_z
                 #print(coeff)
                 #print(time)
 
-                pub_pos.publish(target_qp_pos)
-                pub_vel.publish(target_qp_vel)
-                pub_acc.publish(target_qp_acc)
+                pub_traj.publish(target_qp)
+                #pub_vel.publish(target_qp_vel)
+                #pub_acc.publish(target_qp_acc)
                 #time2 = rospy.get_time()
                 #print((time2-time1))
             

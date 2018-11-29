@@ -6,6 +6,8 @@
 #include <tf/transform_datatypes.h>
 #include <mavros_msgs/VFR_HUD.h>
 #include <ukf_estimate/output.h>
+#include <ukf_estimate/output.h>
+#include <ukf_estimate/Trajectory3D.h>
 #include <std_msgs/Float64.h>
 #include <string>
 #include <iostream>
@@ -86,9 +88,9 @@ geometry_msgs::Twist car_vel;
 sensor_msgs::Imu imu_data;
 std_msgs::Float32MultiArray box;
 std_msgs::Float64 car_angle;
-//geometry_msgs::Point qp_pos;
+ukf_estimate::Trajectory3D target_qp;
 //geometry_msgs::Point qp_vel;
-geometry_msgs::Point qp_acc;
+//geometry_msgs::Point qp_acc;
 typedef struct
 {
     double roll;
@@ -149,21 +151,22 @@ void angle_cb(const std_msgs::Float64::ConstPtr& msg) {
     car_angle = *msg;
     //ROS_INFO("box");
 }
-/*
-void qp_pos_cb(const geometry_msgs::Point::ConstPtr& msg) {
-    qp_pos = *msg;
+
+void qp_cb(const ukf_estimate::Trajectory3D::ConstPtr& msg) {
+    target_qp = *msg;
     //ROS_INFO("box");
 }
-
+/*
 void qp_vel_cb(const geometry_msgs::Point::ConstPtr& msg) {
     qp_vel = *msg;
     //ROS_INFO("box");
 }
-*/
+
 void qp_acc_cb(const geometry_msgs::Point::ConstPtr& msg) {
     qp_acc = *msg;
     //ROS_INFO("box");
 }
+*/
 ////////////////////UKF Global variable//////////////////
 double L;
 double dt;
@@ -303,14 +306,19 @@ Eigen::MatrixXd dynamics(Eigen::MatrixXd sigma_state){
         x1_ = x1 + (vq_cam(0)*x3 - vq_cam(2)*x1*x3 + (camera_vel(2)*x1 - camera_vel(0))*x3 + camera_wvel(2)*x2 - camera_wvel(1) - camera_wvel(1)*x1*x1 + camera_wvel(0)*x1*x2)*dt;
         x2_ = x2 + (vq_cam(1)*x3 - vq_cam(2)*x2*x3 + (camera_vel(2)*x2 - camera_vel(1))*x3 - camera_wvel(2)*x1 + camera_wvel(0) + camera_wvel(0)*x2*x2 - camera_wvel(1)*x1*x2)*dt;
         x3_ = x3 + (-vq_cam(2)*x3*x3 + camera_vel(2)*x3*x3 - (camera_wvel(1)*x1 - camera_wvel(0)*x2)*x3)*dt;
-        q_pose_ = q_pose + vq*dt;
+        //q_pose_ = q_pose + vq*dt;
         if(measurement_flag)
         {
+            q_pose_ = q_pose + vq*dt;
             vq_ = vq;
         }
         else
         {
-            Eigen::Vector3d aq(qp_acc.x, qp_acc.y, qp_acc.z);
+            //q_pose << target_qp.pos.x, target_qp.pos.y, target_qp.pos.z;
+            vq << target_qp.vel.x, target_qp.vel.y, target_qp.vel.z;
+            Eigen::Vector3d aq(target_qp.acc.x, target_qp.acc.y, target_qp.acc.z);
+            
+            q_pose_ = q_pose + vq*dt;
             vq_ = vq + aq*dt;
         }
         //ROS_INFO("vq: x:%.3f y:%.3f z:%.3f",vq_(0),vq_(1),vq_(2));
@@ -971,9 +979,9 @@ int main(int argc, char **argv)
     ros::param::get("~topic_box", topic_box);
     ros::Subscriber host_sub = nh.subscribe<gazebo_msgs::ModelStates>("/gazebo/model_states",1,mocap_cb);
     ros::Subscriber imu_sub = nh.subscribe<sensor_msgs::Imu>("/mavros/imu/data",1,imu_cb);
-    //ros::Subscriber qp_pos_sub = nh.subscribe<geometry_msgs::Point>("/target_qp_pos",1,qp_pos_cb);
+    ros::Subscriber qp_sub = nh.subscribe<ukf_estimate::Trajectory3D>("/target_qp",1,qp_cb);
     //ros::Subscriber qp_vel_sub = nh.subscribe<geometry_msgs::Point>("/target_qp_vel",1,qp_vel_cb);
-    ros::Subscriber qp_acc_sub = nh.subscribe<geometry_msgs::Point>("/target_qp_acc",1,qp_acc_cb);
+    //ros::Subscriber qp_acc_sub = nh.subscribe<geometry_msgs::Point>("/target_qp_acc",1,qp_acc_cb);
     ros::Publisher measurement_pub = nh.advertise<ukf_estimate::output>("/measurement_data", 1);
     ros::Publisher estimate_pub = nh.advertise<ukf_estimate::output>("/estimate_data", 1);
     ros::Subscriber bb_box_sub = nh.subscribe<std_msgs::Float32MultiArray>(topic_box, 1, box_cb);

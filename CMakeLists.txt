@@ -54,6 +54,7 @@ find_package(catkin REQUIRED COMPONENTS
  add_message_files(
    FILES
    output.msg
+   Trajectory3D.msg
  )
 
 ## Generate services in the 'srv' folder
