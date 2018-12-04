@@ -36,12 +36,8 @@ rospy.init_node('target_trajectory_qp', anonymous=True)
 rate = rospy.Rate(int(args.rate))
 
 current_time = rospy.get_time()
-previous_time = rospy.get_time()
-dt = 0.
 
-current_time2 = rospy.get_time()
-previous_time2 = rospy.get_time()
-dt2 = 0.
+time_init = rospy.get_time()
 
 
 def cvxopt_solve_qp(P, q, G=None, h=None, A=None, b=None):
@@ -58,14 +54,10 @@ def cvxopt_solve_qp(P, q, G=None, h=None, A=None, b=None):
 
 
 def callback(msg):
-    global target_data, current_time, previous_time, ti, dt#, callback_flag
-    #callback_flag = True
+    global target_data, current_time
+
     target_data = msg
     current_time = rospy.get_time()
-    dt = current_time - previous_time
-    #print(dt)
-    previous_time = current_time
-    ti = ti + dt
 
 
 def callback2(box):
@@ -82,7 +74,7 @@ def callback2(box):
 
 def quadratic_progamming():
 
-    global ti, time, P_, qx, qy, qz, coeff_x, coeff_y, coeff_z, previous_time, current_time2, previous_time2, dt
+    global ti, time, P_, qx, qy, qz, coeff_x, coeff_y, coeff_z, current_time
     
     estimate_sub = rospy.Subscriber("/estimate_data", output, callback)
     box_sub = rospy.Subscriber("/YOLO/box", Float32MultiArray, callback2)
@@ -92,13 +84,9 @@ def quadratic_progamming():
     
     while not rospy.is_shutdown():
         #time1 = rospy.get_time()
-        
-        current_time2 = rospy.get_time()
-        dt2 = current_time2 - previous_time2
-        previous_time2 = current_time2
-        
         if callback_flag is True:
             print('qp calculating')
+            ti = current_time - time_init
             time.append(ti)
             target_position.append(target_data.target_pose)
             target_velocity.append(target_data.target_vel)
@@ -107,13 +95,6 @@ def quadratic_progamming():
             #print(target_position)
             
             if len(time) == window_length:
-
-                ti = ti - time[0]
-                
-                t0 = time[0]
-                for i in range(window_length):
-                    time[i] = time[i] - t0
-                
                 
                 P_ = np.zeros(((poly_degree+1),(poly_degree+1)))
                 qx = np.zeros(((poly_degree+1), 1))
@@ -133,7 +114,7 @@ def quadratic_progamming():
                     qz = qz + -2*target_position[i].z*Ti0 + -2*target_velocity[i].z*Ti1
 
 
-                t_last = time[-1]
+                t_last = rospy.get_time() - time_init
                 t_init = time[0]
                 
                 #Tir for acceleration regulator
@@ -149,7 +130,7 @@ def quadratic_progamming():
                                    [0, 0, 6*t_init**2, 12*t_init**3]])
                       
                 Tir = Tir_last - Tir_init
-        
+
                 
                 P_ = P_ + window_length*regulator_weight*Tir
 		        #extract 1/2 to be the standard form, so we need to multiply 2 to the original formula
@@ -187,15 +168,18 @@ def quadratic_progamming():
                 pub_traj.publish(target_qp)
                 #time2 = rospy.get_time()
                 #print((time2-time1))
+                print('time')
+                print(t_last)
+                print('coeff_y')
+                print(coeff_y)
+                print('target_qp.vel.y')
+                print(target_qp.vel.y)
                 
                 
         else:
             print('qp estimating')
             if len(time) == window_length:
-                #current_time2 = rospy.get_time()
-                #dt2 = current_time2 - previous_time
-                #previous_time = current_time2
-                t_last = t_last + dt2
+                t_last = rospy.get_time() - time_init
                     
                 target_pos_poly_x = coeff_x[0] + coeff_x[1]*t_last + coeff_x[2]*t_last**2 + coeff_x[3]*t_last**3
                 target_pos_poly_y = coeff_y[0] + coeff_y[1]*t_last + coeff_y[2]*t_last**2 + coeff_y[3]*t_last**3
@@ -220,15 +204,18 @@ def quadratic_progamming():
                 #print(time)
 
                 pub_traj.publish(target_qp)
-                time.append(ti)
-                target_position.append(target_data.target_pose)
-                target_velocity.append(target_data.target_vel)
-                ti = ti - time[0]
-                t0 = time[0]
-                for i in range(window_length):
-                    time[i] = time[i] - t0
                 #time2 = rospy.get_time()
                 #print((time2-time1))
+                time.append((current_time - time_init))
+                target_position.append(target_data.target_pose)
+                target_velocity.append(target_data.target_vel)
+                
+                print('time')
+                print(t_last)
+                print('coeff_y')
+                print(coeff_y)
+                print('target_qp.vel.y')
+                print(target_qp.vel.y)
             
             #callback_flag = False
             
