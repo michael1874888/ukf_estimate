@@ -64,7 +64,7 @@ float Tdy_ibvs = 0;
 float Tdz_ibvs = 0;
 float Tdroll_ibvs = 0;
 
-float desired_distance = 6.5;							//5500
+float desired_distance = 6;							//5500
 float camera_offset = 0;							//0
 float desired_heading = -pi/2;							//-pi/2
 float desired_relative_heading = pi/2;
@@ -89,8 +89,7 @@ sensor_msgs::Imu imu_data;
 std_msgs::Float32MultiArray box;
 std_msgs::Float64 car_angle;
 ukf_estimate::Trajectory3D target_qp;
-//geometry_msgs::Point qp_vel;
-//geometry_msgs::Point qp_acc;
+
 typedef struct
 {
     double roll;
@@ -156,17 +155,7 @@ void qp_cb(const ukf_estimate::Trajectory3D::ConstPtr& msg) {
     target_qp = *msg;
     //ROS_INFO("box");
 }
-/*
-void qp_vel_cb(const geometry_msgs::Point::ConstPtr& msg) {
-    qp_vel = *msg;
-    //ROS_INFO("box");
-}
 
-void qp_acc_cb(const geometry_msgs::Point::ConstPtr& msg) {
-    qp_acc = *msg;
-    //ROS_INFO("box");
-}
-*/
 ////////////////////UKF Global variable//////////////////
 double L;
 double dt;
@@ -281,18 +270,9 @@ Eigen::MatrixXd dynamics(Eigen::MatrixXd sigma_state){
         Eigen::Vector3d vq_cam;
         q_pose.setZero(3);
         vq.setZero(3);
-        //if(measurement_flag)
-        //{
-            //ROS_INFO("1");
-            q_pose << sigma_state(member_xq,i), sigma_state(member_yq,i), sigma_state(member_zq,i);
-            vq << sigma_state(member_vqx,i), sigma_state(member_vqy,i), sigma_state(member_vqz,i);
-        //}
-        /*else
-        {
-            ROS_INFO("2: %.3f",qp_vel.x);
-            q_pose << qp_pos.x, qp_pos.y, qp_pos.z;
-            vq << qp_vel.x, qp_vel.y, qp_vel.z;
-        }*/
+
+        q_pose << sigma_state(member_xq,i), sigma_state(member_yq,i), sigma_state(member_zq,i);
+        vq << sigma_state(member_vqx,i), sigma_state(member_vqy,i), sigma_state(member_vqz,i);
         vq_cam = rot_g2c*vq;
         //vq << target_g2cvel(0), target_g2cvel(1), target_g2cvel(2);
         double x1_ ;
@@ -312,6 +292,7 @@ Eigen::MatrixXd dynamics(Eigen::MatrixXd sigma_state){
             q_pose_ = q_pose + vq*dt;
             vq_ = vq;
         }
+        //if the YOLO measurement is lost, use the QP trajectory to update UKF
         else
         {
             //q_pose << target_qp.pos.x, target_qp.pos.y, target_qp.pos.z;
@@ -621,7 +602,7 @@ void noise_estimate(int window_size)
     //cout << "\nq" <<q_window_sum;
     //cout << "\nr" <<r_window_element;
     //cout << "\nQ\n" <<Q_window_element;
-    //cout << "\nQsum\n" <<Q_window_sum<<"\n";
+    cout << "\nQsum\n" <<Q_window_sum<<"\n";
     //cout << "\nR\n" <<R_window_element<<"\n";
     //cout << "\nR" <<R_window_element<<"\n";
     //cout << "\nRsum" <<R_window_sum<<"\n";
@@ -817,7 +798,7 @@ void ibvs_ukf(vir& vir, Eigen::VectorXd state, geometry_msgs::PoseStamped& host_
     //ROS_INFO("u:%.2f v: %.2f z:%.2f",box_x_center,box_y_center,1/x3);
 
     err_x1 = x1 - (cx - cx)/fx;
-    err_x2 = x2 - ((cy + 0.1*image_height) - cy)/fy;
+    err_x2 = x2 - ((cy + 0.15*image_height) - cy)/fy;
     err_x3 = x3 - (1/desired_distance);
 
     err_features << err_x1, err_x2, err_x3;
@@ -980,8 +961,6 @@ int main(int argc, char **argv)
     ros::Subscriber host_sub = nh.subscribe<gazebo_msgs::ModelStates>("/gazebo/model_states",1,mocap_cb);
     ros::Subscriber imu_sub = nh.subscribe<sensor_msgs::Imu>("/mavros/imu/data",1,imu_cb);
     ros::Subscriber qp_sub = nh.subscribe<ukf_estimate::Trajectory3D>("/target_qp",1,qp_cb);
-    //ros::Subscriber qp_vel_sub = nh.subscribe<geometry_msgs::Point>("/target_qp_vel",1,qp_vel_cb);
-    //ros::Subscriber qp_acc_sub = nh.subscribe<geometry_msgs::Point>("/target_qp_acc",1,qp_acc_cb);
     ros::Publisher measurement_pub = nh.advertise<ukf_estimate::output>("/measurement_data", 1);
     ros::Publisher estimate_pub = nh.advertise<ukf_estimate::output>("/estimate_data", 1);
     ros::Subscriber bb_box_sub = nh.subscribe<std_msgs::Float32MultiArray>(topic_box, 1, box_cb);
@@ -1223,9 +1202,22 @@ int main(int argc, char **argv)
         //ROS_INFO("mx1:%.3f mx2:%.3f mz:%.3f", (center_u - cx)/fx, (center_v - cy)/fy, 1/sqrt(box_area/(model_height*model_width*fx*fy)));
 
         //execute correct if the target is detected
-        if(box.data[0] >= 0.8)
+        float bb_aspect_ratio = box.data[4]/box.data[3];      //set an aspect ratio to tell if the obstacle appears
+        if(box.data[0] >= 0.7 && bb_aspect_ratio >=1.7)
         {
             measurement_flag = true;
+            //if the measurement is lost for 3s, set the feature vector state as measurement when the bounding box appear
+            if(measurement_false_count > 3*loop_rate)
+            {
+                //initialize();
+                x(0) = (box.data[2]*image_width - cx)/fx;
+                x(1) = (box.data[1]*image_height - cy)/fy;
+                x(2) = 1/sqrt(((model_width*model_height)/(box.data[4]*image_width*box.data[3]*image_height))*fx*fy);
+                //P = P_init;
+                //R = measurement_noise;
+                //Q = process_noise;
+                //callback_spin_count = 50;
+            }
             measurement_false_count = 0;
         }
         else
@@ -1235,6 +1227,7 @@ int main(int argc, char **argv)
 
             measurement_flag = false;
             measurement_false_count++;
+            ROS_INFO("YOLO False");
         }
         correct(measure_vector);
 
