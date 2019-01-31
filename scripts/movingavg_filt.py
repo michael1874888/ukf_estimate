@@ -13,13 +13,13 @@ def callback(box):
     global angle_filt, count, box2
     
     if box.data[0] != -1:
-        if abs(angle_filt - box.data[6]) > 3.1415926:
-            angle_sub = 2*3.1415926 - abs(angle_filt - box.data[6])
+        if abs(angle_filt - box.data[5]) > 3.1415926:                   #box.data[5] or box.data[6] depends on the version of YOLO
+            angle_sub = 2*3.1415926 - abs(angle_filt - box.data[5])
         else:
-            angle_sub = abs(angle_filt - box.data[6])
+            angle_sub = abs(angle_filt - box.data[5])
 
         if angle_sub < 3.1415926/4:
-            angles.append(box.data[6])
+            angles.append(box.data[5])
 		
         angle_sum = 0
         if count >= window_length:
@@ -27,10 +27,10 @@ def callback(box):
                 angle_sum = angle_sum + angle
             angle_filt = angle_sum/window_length
         else:
-            angle_filt = box.data[6]
+            angle_filt = box.data[5]
             count = count + 1
 
-        box2 = box.data[6]
+        box2 = box.data[5]
     
 def listener():
     

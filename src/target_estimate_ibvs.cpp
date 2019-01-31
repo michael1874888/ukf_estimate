@@ -64,7 +64,7 @@ float Tdy_ibvs = 0;
 float Tdz_ibvs = 0;
 float Tdroll_ibvs = 0;
 
-float desired_distance = 6;							//5500
+float desired_distance = 7;							//5500
 float camera_offset = 0;							//0
 float desired_heading = -pi/2;							//-pi/2
 float desired_relative_heading = pi/2;
@@ -274,6 +274,7 @@ Eigen::MatrixXd dynamics(Eigen::MatrixXd sigma_state){
         q_pose << sigma_state(member_xq,i), sigma_state(member_yq,i), sigma_state(member_zq,i);
         vq << sigma_state(member_vqx,i), sigma_state(member_vqy,i), sigma_state(member_vqz,i);
         vq_cam = rot_g2c*vq;
+        Eigen::Vector3d aq(target_qp.acc.x, target_qp.acc.y, target_qp.acc.z);
         //vq << target_g2cvel(0), target_g2cvel(1), target_g2cvel(2);
         double x1_ ;
         double x2_ ;
@@ -297,7 +298,7 @@ Eigen::MatrixXd dynamics(Eigen::MatrixXd sigma_state){
         {
             //q_pose << target_qp.pos.x, target_qp.pos.y, target_qp.pos.z;
             vq << target_qp.vel.x, target_qp.vel.y, target_qp.vel.z;
-            Eigen::Vector3d aq(target_qp.acc.x, target_qp.acc.y, target_qp.acc.z);
+            //Eigen::Vector3d aq(target_qp.acc.x, target_qp.acc.y, target_qp.acc.z);
             
             q_pose_ = q_pose + vq*dt;
             vq_ = vq + aq*dt;
@@ -350,6 +351,8 @@ Eigen::MatrixXd state_to_measure(Eigen::MatrixXd sigma_state){
         predict_sigma_measure( member_myc ,i) =   sigma_state(member_yq,i) - rel_posec2g(1);
         predict_sigma_measure( member_mzc ,i) =   sigma_state(member_zq,i) - rel_posec2g(2);
         //ROS_INFO("rel_pose: x:%.3f y:%.3f z:%.3f",rel_pose(0),rel_pose(1),rel_pose(2));
+        //predict_sigma_measure( member_mtheta ,i) =  sigma_state(member_theta,i);
+        //predict_sigma_measure( member_mtheta ,i) =  atan2((host_mocap.pose.position.y-sigma_state(member_yq,i)),(host_mocap.pose.position.x-sigma_state(member_xq,i))) - atan2(sigma_state(member_vqy,i),sigma_state(member_vqx,i));
     }
     //ROS_INFO("xq:%.3f",sigma_state(member_xq,0));
     return predict_sigma_measure;
@@ -512,6 +515,7 @@ void correct(Eigen::VectorXd measure){
         y(0) = y_hat(0);
         y(1) = y_hat(1);
         y(2) = y_hat(2);
+        //y(6) = y_hat(6);
     }
     x = x_hat + Kalman_gain *(y-y_hat);
 
@@ -798,7 +802,7 @@ void ibvs_ukf(vir& vir, Eigen::VectorXd state, geometry_msgs::PoseStamped& host_
     //ROS_INFO("u:%.2f v: %.2f z:%.2f",box_x_center,box_y_center,1/x3);
 
     err_x1 = x1 - (cx - cx)/fx;
-    err_x2 = x2 - ((cy + 0.15*image_height) - cy)/fy;
+    err_x2 = x2 - ((cy + 0.2*image_height) - cy)/fy;
     err_x3 = x3 - (1/desired_distance);
 
     err_features << err_x1, err_x2, err_x3;
@@ -841,13 +845,13 @@ void ibvs_ukf(vir& vir, Eigen::VectorXd state, geometry_msgs::PoseStamped& host_
 
     errv_cam << 0, command_vel_tmp(0), command_vel_tmp(1);
     errw_cam << 0, command_vel_tmp(2), 0;
-    //errv_body << 0, ((car_angle.data - desired_relative_heading)*depth_Z*image_width/(fov_x*fx)/* - erru*depth_Z*/), 0;
-    errv_body << 0, ((rpy_mocap.yaw - desired_heading)*depth_Z*image_width/(fov_x*fx)/* - erru*depth_Z*/), 0;
+    errv_body << 0, ((car_angle.data - desired_relative_heading)*depth_Z*image_width/(fov_x*fx)/* - erru*depth_Z*/), 0;
+    //errv_body << 0, ((rpy_mocap.yaw - desired_heading)*depth_Z*image_width/(fov_x*fx)/* - erru*depth_Z*/), 0;
     errv_cam(0) = (rot_b2c*errv_body)(0);
 
-    err_ux = errv_cam(0);// + 1000*target_gvel(0);
-    err_uy = errv_cam(1);// + 1000*target_gvel(1);
-    err_uz = errv_cam(2);// + 1000*target_gvel(2);
+    err_ux = errv_cam(0);
+    err_uy = errv_cam(1);
+    err_uz = errv_cam(2);
     err_uroll = errw_cam(1);
 
     err_ux_sum = err_ux_sum + err_ux;
@@ -888,34 +892,54 @@ void ibvs_ukf(vir& vir, Eigen::VectorXd state, geometry_msgs::PoseStamped& host_
     vir.z = host_mocap.pose.position.z;
 }
 
-void pbvs_ukf(Eigen::VectorXd state, geometry_msgs::PoseStamped& host_mocap, geometry_msgs::TwistStamped* vs, float dis_x, float dis_y)
+void pbvs_ukf(Eigen::VectorXd state, geometry_msgs::PoseStamped& host_mocap, geometry_msgs::TwistStamped* vs, float desired_relative_ang, float desired_dis)
 {
     float errx, erry, errz, err_roll;
     float ux, uy, uz, uroll;
+    float dis_x, dis_y;
     float local_x, local_y;
+    float heading_ang;
+    float x1, err_x1;
+    
+    /*if(abs(target_qp.vel.y>=0.1) || abs(target_qp.vel.x)>=0.1)
+        //heading_ang = atan2(target_gvel(1),target_gvel(0));
+        heading_ang = atan2(target_qp.vel.y,target_qp.vel.x);
+    else*/
+    heading_ang = 0;
+        
+    ROS_INFO("heading angle: %.3f",heading_ang/pi*180);
+    
+    dis_x = desired_dis*cos(desired_relative_ang);
+    dis_y = desired_dis*sin(desired_relative_ang);
 
-    local_x = cos(0)*dis_x+sin(0)*dis_y;
-    local_y = -sin(0)*dis_x+cos(0)*dis_y;
+    local_x = cos(heading_ang)*dis_x-sin(heading_ang)*dis_y;
+    local_y = sin(heading_ang)*dis_x+cos(heading_ang)*dis_y;
+    
+    x1 = state(member_x1);
+    err_x1 = x1 - (cx - cx)/fx;
+    
 
     errx = (state(member_xq)) - host_mocap.pose.position.x + local_x;
-    erry = (state(member_yq) - 2.03453) - host_mocap.pose.position.y + local_y;
-    errz = (state(member_zq) - 0.75) - host_mocap.pose.position.z + 1;
-    err_roll = desired_heading - rpy_mocap.yaw;
-    if(err_roll>pi)
+    erry = (state(member_yq)) - host_mocap.pose.position.y + local_y;
+    errz = (state(member_zq)) - host_mocap.pose.position.z + 1;
+    //err_roll = desired_heading - rpy_mocap.yaw;
+    err_roll = (-1/(x1*x1+1))*err_x1;
+    /*if(err_roll>pi)
         err_roll = err_roll - 2*pi;
     else if(err_roll<-pi)
-        err_roll = err_roll + 2*pi;
+        err_roll = err_roll + 2*pi;*/
 
-    ROS_INFO("target: %.3f, %.3f, %.3f",(state(member_xq) - 1.3827),(state(member_yq) - 2.03453),(state(member_zq) - 0.75));
+    ROS_INFO("target: %.3f, %.3f, %.3f",(state(member_xq)),(state(member_yq)),(state(member_zq)));
+    ROS_INFO("err_roll: %.3f",err_roll);
 
     ux = KPx*errx;
     uy = KPy*erry;
     uz = KPz*errz;
-    uroll = KProll*err_roll;
+    uroll = 1.2*err_roll;
 
     vs->twist.linear.x = ux + state(member_vqx);
     vs->twist.linear.y = uy + state(member_vqy);
-    vs->twist.linear.z = uz + state(member_vqz);
+    vs->twist.linear.z = uz;// + state(member_vqz);
     vs->twist.angular.z = uroll;
 
 }
@@ -963,6 +987,7 @@ int main(int argc, char **argv)
     ros::Subscriber qp_sub = nh.subscribe<ukf_estimate::Trajectory3D>("/target_qp",1,qp_cb);
     ros::Publisher measurement_pub = nh.advertise<ukf_estimate::output>("/measurement_data", 1);
     ros::Publisher estimate_pub = nh.advertise<ukf_estimate::output>("/estimate_data", 1);
+    ros::Subscriber angel_filt_sub = nh.subscribe<std_msgs::Float64>("/car_angle_avg", 1, angle_cb);
     ros::Subscriber bb_box_sub = nh.subscribe<std_msgs::Float32MultiArray>(topic_box, 1, box_cb);
 
     ros::Subscriber state_sub = nh.subscribe<mavros_msgs::State>("mavros/state", 10, state_cb);
@@ -1038,7 +1063,9 @@ int main(int argc, char **argv)
     //set initial value of state
     x(0) = (box.data[2]*image_width - cx)/fx;
     x(1) = (box.data[1]*image_height - cy)/fy;
-    x(2) = 1/sqrt(((model_width*model_height)/(box.data[4]*image_width*box.data[3]*image_height))*fx*fy);
+    //x(2) = 1/sqrt(((model_width*model_height)/(box.data[4]*image_width*box.data[3]*image_height))*fx*fy);
+    x(2) = 1/sqrt(pow((host_mocap.pose.position.x-car_pose.pose.position.x),2) + pow((host_mocap.pose.position.y-car_pose.pose.position.y),2));
+    //x(9) = car_angle.data;
 
     //increase the initial value of P can increase the speed of convergence
     Eigen::MatrixXd P_init;
@@ -1052,6 +1079,7 @@ int main(int argc, char **argv)
     ros::param::get("~P_init_6", P_init(6,6));
     ros::param::get("~P_init_7", P_init(7,7));
     ros::param::get("~P_init_8", P_init(8,8));
+    //ros::param::get("~P_init_9", P_init(9,9));
     P = P_init;             //set initial P matrix
 
 
@@ -1065,6 +1093,7 @@ int main(int argc, char **argv)
     ros::param::get("~measurement_noise_3", measurement_noise(3,3));
     ros::param::get("~measurement_noise_4", measurement_noise(4,4));
     ros::param::get("~measurement_noise_5", measurement_noise(5,5));
+    //ros::param::get("~measurement_noise_6", measurement_noise(6,6));
     R = measurement_noise;             //set measurement noise
 
     Eigen::MatrixXd process_noise;
@@ -1079,6 +1108,7 @@ int main(int argc, char **argv)
     ros::param::get("~process_noise_6", process_noise(6,6));
     ros::param::get("~process_noise_7", process_noise(7,7));
     ros::param::get("~process_noise_8", process_noise(8,8));
+    //ros::param::get("~process_noise_9", process_noise(9,9));
     Q = process_noise;              //set process noise
 
     mavros_msgs::SetMode offb_set_mode;
@@ -1117,7 +1147,9 @@ int main(int argc, char **argv)
             initialize();
             x(0) = (box.data[2]*image_width - cx)/fx;
             x(1) = (box.data[1]*image_height - cy)/fy;
-            x(2) = 1/sqrt(((model_width*model_height)/(box.data[4]*image_width*box.data[3]*image_height))*fx*fy);
+            //x(2) = 1/sqrt(((model_width*model_height)/(box.data[4]*image_width*box.data[3]*image_height))*fx*fy);
+            x(2) = 1/sqrt(pow((host_mocap.pose.position.x-car_pose.pose.position.x),2) + pow((host_mocap.pose.position.y-car_pose.pose.position.y),2));
+            //x(9) = car_angle.data;
             P = P_init;
             R = measurement_noise;
             Q = process_noise;
@@ -1135,6 +1167,15 @@ int main(int argc, char **argv)
         global_wvel << host_mocap_vel.angular.x, host_mocap_vel.angular.y, host_mocap_vel.angular.z;
         target_gvel << car_vel.linear.x, car_vel.linear.y, car_vel.linear.z;
         target_gwvel << car_vel.angular.x, car_vel.angular.y, car_vel.angular.z;
+        ROS_INFO("ground_truth: %f",(atan2((host_mocap.pose.position.y-car_pose.pose.position.y),(host_mocap.pose.position.x-car_pose.pose.position.x)) - atan2(target_gvel(1),target_gvel(0)))/pi*180);
+        /*tf::Quaternion q_tf;
+        q_tf.setRPY(0,0,car_angle.data);
+        ROS_INFO("X: %.3f,Y: %.3f,Z: %.3f,W: %.3f",q_tf.getX(), q_tf.getY(), q_tf.getZ(), q_tf.getW());
+        rpy rpy_relative;
+        rpy_relative = quaternionToRPY(q_tf.getX(), q_tf.getY(), q_tf.getZ(), q_tf.getW());
+        ROS_INFO("R: %.3f,P: %.3f,Y: %.3f",rpy_relative.roll, rpy_relative.pitch, rpy_relative.yaw);
+        ROS_INFO("car_angle: %.3f",car_angle.data);*/
+        
 
         rotation_x.setZero(3,3);
         rotation_y.setZero(3,3);
@@ -1196,14 +1237,13 @@ int main(int argc, char **argv)
         center_u = box.data[2]*image_width;
         center_v = box.data[1]*image_height;
         //box_area = abs(box.data[3]*image_height*box.data[4]*image_width);
-        box_area = sqrt(((model_width*model_height)/(box.data[4]*image_width*box.data[3]*image_height))*fx*fy);
-        measure_vector<<center_u, center_v, box_area, host_mocap.pose.position.x, host_mocap.pose.position.y, host_mocap.pose.position.z;
-        ROS_INFO("u:%.3f v:%.3f a:%.3f", center_u, center_v, box_area);
-        //ROS_INFO("mx1:%.3f mx2:%.3f mz:%.3f", (center_u - cx)/fx, (center_v - cy)/fy, 1/sqrt(box_area/(model_height*model_width*fx*fy)));
+        //box_area = sqrt(((model_width*model_height)/(box.data[4]*image_width*box.data[3]*image_height))*fx*fy);
+        box_area = sqrt(pow((host_mocap.pose.position.x-car_pose.pose.position.x),2) + pow((host_mocap.pose.position.y-car_pose.pose.position.y),2));
+        measure_vector<<center_u, center_v, box_area, host_mocap.pose.position.x, host_mocap.pose.position.y, host_mocap.pose.position.z;//, car_angle.data;
 
         //execute correct if the target is detected
         float bb_aspect_ratio = box.data[4]/box.data[3];      //set an aspect ratio to tell if the obstacle appears
-        if(box.data[0] >= 0.7 && bb_aspect_ratio >=1.7)
+        if(box.data[0] >= 0.5)// && bb_aspect_ratio >=1.7)
         {
             measurement_flag = true;
             //if the measurement is lost for 3s, set the feature vector state as measurement when the bounding box appear
@@ -1212,7 +1252,9 @@ int main(int argc, char **argv)
                 //initialize();
                 x(0) = (box.data[2]*image_width - cx)/fx;
                 x(1) = (box.data[1]*image_height - cy)/fy;
-                x(2) = 1/sqrt(((model_width*model_height)/(box.data[4]*image_width*box.data[3]*image_height))*fx*fy);
+                //x(2) = 1/sqrt(((model_width*model_height)/(box.data[4]*image_width*box.data[3]*image_height))*fx*fy);
+                x(2) = 1/sqrt(pow((host_mocap.pose.position.x-car_pose.pose.position.x),2) + pow((host_mocap.pose.position.y-car_pose.pose.position.y),2));
+                //x(9) = car_angle.data;
                 //P = P_init;
                 //R = measurement_noise;
                 //Q = process_noise;
@@ -1238,6 +1280,8 @@ int main(int argc, char **argv)
             Q(7,7) = 0.002;
         //if(Q(8,8)<0.002)
         //Q(8,8) = 0.002;
+        //if(Q(9,9)>0.3)
+            //Q(9,9) = 0.3;
 
         int c = getch();
         //ROS_INFO("C: %d",c);
@@ -1354,16 +1398,19 @@ int main(int argc, char **argv)
             {
                 ROS_INFO("ukf mode");
                 vir1.x = 0;
-                vir1.y = 7.5;
-                vir1.z = 0.7;
+                vir1.y = 7;
+                vir1.z = 1;
                 follow(vir1,host_mocap,&vs,0,0);
                 ibvs_ukf(vir1, x, host_mocap, &vs, dt);
-                //pbvs_ukf(x,host_mocap,&vs,0,7.5);
+                //pbvs_ukf(x,host_mocap,&vs,desired_relative_heading,6.5);
             }
         }
-        //ROS_INFO("desired_relative_angle: %.3f", desired_relative_heading/pi*180);
+        ROS_INFO("desired_relative_angle: %.3f", desired_relative_heading/pi*180);
         //ROS_INFO("drone: x:%.3f  y:%.3f  z:%.3f", host_mocap.pose.position.x, host_mocap.pose.position.y, host_mocap.pose.position.z);
         //ROS_INFO("car:   x:%.3f  y:%.3f  z:%.3f", car_pose.pose.position.x, car_pose.pose.position.y, car_pose.pose.position.z);
+        ROS_INFO("u:%.3f v:%.3f a:%.3f theta:%.3f", center_u, center_v, box_area, car_angle.data/pi*180);
+        //ROS_INFO("estimate angle: %f",(atan2((host_mocap.pose.position.y-x(4)),(host_mocap.pose.position.x-x(3))) - atan2(x(7),x(6)))/pi*180);
+        //ROS_INFO("ukf_theta: %.3f",x(9)/pi*180);
 
         measure_value.feature.x = (host_mocap.pose.position.x - car_pose.pose.position.x)/(host_mocap.pose.position.y - car_pose.pose.position.y);
         measure_value.feature.y = (host_mocap.pose.position.z - car_pose.pose.position.z)/(host_mocap.pose.position.y - car_pose.pose.position.y);
@@ -1376,7 +1423,7 @@ int main(int argc, char **argv)
         measure_value.target_vel.z = target_gvel(2);
         estimate_value.feature.x = x(0);
         estimate_value.feature.y = x(1);
-        estimate_value.feature.z = (1/x(2));                            //depth = 1/x(2)
+        estimate_value.feature.z = 1/x(2);                            //depth = 1/x(2)
         estimate_value.target_pose.x = x(3);
         estimate_value.target_pose.y = x(4);
         estimate_value.target_pose.z = x(5);
