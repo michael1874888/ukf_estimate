@@ -3,7 +3,7 @@ import collections
 from std_msgs.msg import Float32MultiArray
 from std_msgs.msg import Float64
 
-window_length = 20
+window_length = 40
 angles = collections.deque(maxlen=window_length)
 angle_filt = 3.1415926/2
 box2 = 0
@@ -40,7 +40,7 @@ def listener():
     
     pub = rospy.Publisher('car_angle_avg', Float64, queue_size=10)
 
-    rate = rospy.Rate(50)
+    rate = rospy.Rate(80)
 
     while not rospy.is_shutdown():
         print('angle_filt')
