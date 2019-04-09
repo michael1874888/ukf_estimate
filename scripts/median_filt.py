@@ -49,7 +49,7 @@ def listener():
 
     rospy.Subscriber("YOLO/box", Float32MultiArray, callback)
     
-    pub = rospy.Publisher('car_angle_med', Float64, queue_size=10)
+    pub = rospy.Publisher('car_angle_med', Float64, queue_size=1)
 
     rate = rospy.Rate(50)
 

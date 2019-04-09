@@ -3,7 +3,7 @@ import collections
 from std_msgs.msg import Float32MultiArray
 from std_msgs.msg import Float64
 
-window_length = 40
+window_length = 80
 angles = collections.deque(maxlen=window_length)
 angle_filt = 3.1415926/2
 box2 = 0
@@ -38,7 +38,7 @@ def listener():
 
     rospy.Subscriber("YOLO/box", Float32MultiArray, callback)
     
-    pub = rospy.Publisher('car_angle_avg', Float64, queue_size=10)
+    pub = rospy.Publisher('car_angle_avg', Float64, queue_size=1)
 
     rate = rospy.Rate(80)
 

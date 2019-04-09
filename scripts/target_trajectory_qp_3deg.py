@@ -84,8 +84,8 @@ def quadratic_progamming():
 
     global ti, time, P_, qx, qy, qz, coeff_x, coeff_y, coeff_z, previous_time, current_time2, previous_time2, dt
     
-    estimate_sub = rospy.Subscriber("/estimate_data", output, callback)
-    box_sub = rospy.Subscriber("/YOLO/box", Float32MultiArray, callback2)
+    estimate_sub = rospy.Subscriber("/estimate_data", output, callback, queue_size=1)
+    box_sub = rospy.Subscriber("/YOLO/box", Float32MultiArray, callback2, queue_size=1)
     pub_traj = rospy.Publisher('target_qp', Trajectory3D, queue_size=1)
 
     target_qp = Trajectory3D()
