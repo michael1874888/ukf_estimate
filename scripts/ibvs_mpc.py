@@ -6,6 +6,7 @@ from geometry_msgs.msg import TwistStamped
 from geometry_msgs.msg import PoseStamped
 from gazebo_msgs.msg import ModelStates
 from ukf_estimate.msg import output
+from ukf_estimate.msg import Trajectory3D
 from tf.transformations import euler_from_quaternion
 from casadi import *
 
@@ -33,7 +34,7 @@ def callback(msg):
     optimal_ibvs = msg.target_pose.y
 
 drone_idx = 0
-host_mocap = PoseStamped
+host_mocap = PoseStamped()
 def callback2(msg):
     global drone_idx, host_mocap
     
@@ -43,7 +44,11 @@ def callback2(msg):
 
     host_mocap.pose = msg.pose[drone_idx];
 
-
+def callback3(msg):
+    global tar_acc
+    tar_acc = np.array([msg.acc.x, msg.acc.y, msg.acc.z])
+    #print('acc',tar_acc)
+    
 def get_rotation(msg):
     orientation_list = [msg.x, msg.y, msg.z, msg.w]
     (roll, pitch, yaw) = euler_from_quaternion (orientation_list)
@@ -121,7 +126,8 @@ else:
 rospy.init_node('mpc_ibvs', anonymous=True)
 pub = rospy.Publisher('mavros/setpoint_velocity/cmd_vel', TwistStamped, queue_size=1)
 estimate_sub = rospy.Subscriber("/estimate_data", output, callback, queue_size=1)
-host_sub = rospy.Subscriber("/gazebo/model_states", ModelStates, callback2, queue_size=1)   
+host_sub = rospy.Subscriber("/gazebo/model_states", ModelStates, callback2, queue_size=1)
+qp_sub = rospy.Subscriber("/target_qp", Trajectory3D, callback3, queue_size=1)
 rate = rospy.Rate(loop_rate)
 
 for i in range(0,100):
@@ -182,6 +188,7 @@ while not rospy.is_shutdown():
     
     # Calculate the target velocity in Camera Frame
     tar_vel_cam = mtimes(rot_g2c,tar_vel)
+    tar_acc_cam = mtimes(rot_g2c,tar_acc)
     
 
     # "Lift" initial conditions
@@ -211,6 +218,8 @@ while not rospy.is_shutdown():
         lbw += [(0 - cx)/fx, (0 - cy)/fy, 1./15, 0]
         ubw += [(image_width - cx)/fx, (image_height - cy)/fy, 1, pi]
         w0  += [0, 0, 0, 0]
+        
+        tar_vel_cam = tar_vel_cam + tar_acc_cam*T
     
         # Add inequality constraint
         g   += [Xk_end-Xk]
