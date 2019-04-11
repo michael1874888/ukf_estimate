@@ -11,9 +11,9 @@ from tf.transformations import euler_from_quaternion
 from casadi import *
 
 
-loop_rate = 50.
+loop_rate = 40.
 T = 1./loop_rate # Sampling Time
-N = 10 # Predict horizon
+N = 50 # Predict horizon
 image_width = 640;
 image_height = 480;
 cx = 320
@@ -23,7 +23,7 @@ fy = 381.36
 desired_distance = 7.0
 desired_angle = pi/2
 # Desired state value
-sd = DM([(cx - cx)/fx, ((cy + 0.15*image_height) - cy)/fy, 1./desired_distance, desired_angle])
+sd_ = DM([(cx - cx)/fx, ((cy + 0.15*image_height) - cy)/fy, 1./desired_distance, desired_angle])
 optimal_ibvs = False
 
 # Callback function
@@ -74,6 +74,12 @@ vq3 = SX.sym('vq3')
 vq4 = SX.sym('vq4')
 vq = vertcat(vq1, vq2, vq3, vq4)
 
+sd1 = SX.sym('sd1')
+sd2 = SX.sym('sd2')
+sd3 = SX.sym('sd3')
+sd4 = SX.sym('sd4')
+sd = vertcat(sd1, sd2, sd3, sd4)
+
 # Predict Model equations
 x1dot = -x3*(u1-vq1) + x1*x3*(u3-vq3) - (1 + x1**2)*u4
 x2dot = -x3*(u2-vq2) + x2*x3*(u3-vq3) - x1*x2*u4
@@ -84,44 +90,47 @@ xdot = vertcat(x1dot, x2dot, x3dot, x4dot)
 # Objective term
 Q = DM.eye(4)
 W = DM.eye(4)
-Q[2,2] = 200
-Q[3,3] = 5
-W[0,0] = 0.01
+Q[2,2] = 100
+#Q[3,3] = 5
+W[0,0] = 0.02
 W[1,1] = 0.005
-W[2,2] = 0.03
-W[3,3] = 0.1
+W[2,2] = 0.01
+W[3,3] = 0.3
 L = mtimes(mtimes((x-sd).T, Q), (x-sd)) + mtimes(mtimes((u-vq).T, W), (u-vq))
 
 # Formulate discrete time dynamics
 if True:
-    f = Function('f', [x, u, vq], [xdot, L])
+    f = Function('f', [x, sd, u, vq], [xdot, L])
     X0 = SX.sym('X0', 4)
+    Sd = SX.sym('Sd', 4)
     U = SX.sym('U', 4)
     Vq = SX.sym('Vq', 4)
+    
     X = X0
     Q = 0
-    k1, k1_q = f(X, U, Vq)
+    k1, k1_q = f(X, Sd, U, Vq)
     X = X + k1*T
     Q = Q + k1_q
-    F = Function('F', [X0, U, Vq], [X, Q],['x0','p','tv'],['xf','qf'])
+    F = Function('F', [X0, Sd, U, Vq], [X, Q],['x0','xd','p','tv'],['xf','qf'])
 else:
     # Fixed step Runge-Kutta 4 integrator
     M = 4 # RK4 steps per interval
     DT = T/M
     f = Function('f', [x, u, vq], [xdot, L])
     X0 = SX.sym('X0', 4)
+    Sd = SX.sym('Sd', 4)
     U = SX.sym('U', 4)
     Vq = SX.sym('Vq', 4)
     X = X0
     Q = 0
     for j in range(M):
-       k1, k1_q = f(X, U, Vq)
-       k2, k2_q = f(X + DT/2 * k1, U, Vq)
-       k3, k3_q = f(X + DT/2 * k2, U, Vq)
-       k4, k4_q = f(X + DT * k3, U, Vq)
+       k1, k1_q = f(X, Sd, U, Vq)
+       k2, k2_q = f(X + DT/2 * k1, Sd, U, Vq)
+       k3, k3_q = f(X + DT/2 * k2, Sd, U, Vq)
+       k4, k4_q = f(X + DT * k3, Sd, U, Vq)
        X=X+DT/6*(k1 +2*k2 +2*k3 +k4)
        Q = Q + DT/6*(k1_q + 2*k2_q + 2*k3_q + k4_q)
-    F = Function('F', [X0, U, Vq], [X, Q],['x0','p','tv'],['xf','qf'])
+    F = Function('F', [X0, Sd, U, Vq], [X, Q],['x0','xd','p','tv'],['xf','qf'])
 
 rospy.init_node('mpc_ibvs', anonymous=True)
 pub = rospy.Publisher('mavros/setpoint_velocity/cmd_vel', TwistStamped, queue_size=1)
@@ -139,10 +148,11 @@ for i in range(0,100):
 #control_input = DM([0, 0, 0, 0])
 tar_vel_cam = DM([0, 0, 0])
 tar_vel_cam_pre = DM([0, 0, 0])
+Xm = X_state_
 cmd_vel = TwistStamped()
 
 # Test the initial point
-Fk = F(x0=X_state_,p=[0, 0, 0, 0],tv=[1,1,1,0])
+Fk = F(x0=X_state_,xd=sd_,p=[0, 0, 0, 0],tv=[1,1,1,0])
 print(Fk['xf'])
 print(Fk['qf'])
 
@@ -188,6 +198,7 @@ while not rospy.is_shutdown():
     
     # Calculate the target velocity in Camera Frame
     tar_vel_cam = mtimes(rot_g2c,tar_vel)
+    tar_vel_cam_ = tar_vel_cam[:]
     tar_acc_cam = mtimes(rot_g2c,tar_acc)
     
 
@@ -198,6 +209,12 @@ while not rospy.is_shutdown():
     lbw += list(X_state.full().flatten())
     ubw += list(X_state.full().flatten())
     w0 += list(X_state.full().flatten())
+    
+    epi = X_state - Xm
+    Xd = sd_ - epi
+    #print('sd',sd_)
+    #print('xd',Xd)
+    
     #time1 = rospy.get_time()
 
     for k in range(N):
@@ -208,7 +225,7 @@ while not rospy.is_shutdown():
         w0 += [0, 0, 0, 0]
 
         # Integrate till the end of the interval
-        Fk = F(x0=Xk, p=Uk, tv=DM(vertcat(tar_vel_cam,0)))
+        Fk = F(x0=Xk, xd=Xd, p=Uk, tv=DM(vertcat(tar_vel_cam_,0)))
         Xk_end = Fk['xf']
         J=J+Fk['qf']
         
@@ -219,7 +236,7 @@ while not rospy.is_shutdown():
         ubw += [(image_width - cx)/fx, (image_height - cy)/fy, 1, pi]
         w0  += [0, 0, 0, 0]
         
-        tar_vel_cam = tar_vel_cam + tar_acc_cam*T
+        tar_vel_cam_ = tar_vel_cam_ + tar_acc_cam*T
     
         # Add inequality constraint
         g   += [Xk_end-Xk]
@@ -235,9 +252,14 @@ while not rospy.is_shutdown():
     opts["ipopt.print_level"] = 0
     solver = nlpsol('solver', 'ipopt', prob, opts);
     
+    
     # Solve the NLP
     sol = solver(x0=w0, lbx=lbw, ubx=ubw, lbg=lbg, ubg=ubg)
     w_opt = sol['x']
+    
+    # Predict the next state by model
+    Fn = F(x0=X_state, xd=sd_, p=w_opt[4:8], tv=DM(vertcat(tar_vel_cam,0)))
+    Xm = Fn['xf']
     
     # Applies the first control element of u, and update the states    
     # Calculate the command velocity in Global Frame
