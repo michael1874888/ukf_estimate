@@ -10,7 +10,8 @@ from ukf_estimate.msg import Trajectory3D
 from tf.transformations import euler_from_quaternion
 from casadi import *
 
-
+# The time of the entire predict horizon is recommended to be greater than 1 second.
+# In other words, N >= loop_rate
 loop_rate = 40.
 T = 1./loop_rate # Sampling Time
 N = 50 # Predict horizon
@@ -93,7 +94,7 @@ W = DM.eye(4)
 Q[2,2] = 100
 #Q[3,3] = 5
 W[0,0] = 0.02
-W[1,1] = 0.005
+W[1,1] = 0.03
 W[2,2] = 0.01
 W[3,3] = 0.3
 L = mtimes(mtimes((x-sd).T, Q), (x-sd)) + mtimes(mtimes((u-vq).T, W), (u-vq))
