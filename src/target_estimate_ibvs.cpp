@@ -68,7 +68,7 @@ float desired_distance = 7;							//5500
 float camera_offset = 0;							//0
 float desired_heading = -pi/2;							//-pi/2
 float desired_relative_heading = pi/2;
-float asp_ratio = 1.7;
+float asp_ratio = 1.65;
 int loop_rate = 80;
 
 float err_ux, err_uy, err_uz, err_uroll;
@@ -303,7 +303,7 @@ Eigen::MatrixXd dynamics(Eigen::MatrixXd sigma_state){
         else
         {
             //q_pose << target_qp.pos.x, target_qp.pos.y, target_qp.pos.z;
-            vq << target_qp.vel.x, target_qp.vel.y, target_qp.vel.z;
+            //vq << target_qp.vel.x, target_qp.vel.y, target_qp.vel.z;
             //Eigen::Vector3d aq(target_qp.acc.x, target_qp.acc.y, target_qp.acc.z);
             
             q_pose_ = q_pose + vq*dt;
@@ -1196,6 +1196,11 @@ int main(int argc, char **argv)
         global_wvel << host_mocap_vel.angular.x, host_mocap_vel.angular.y, host_mocap_vel.angular.z;
         target_gvel << car_vel.linear.x, car_vel.linear.y, car_vel.linear.z;
         target_gwvel << car_vel.angular.x, car_vel.angular.y, car_vel.angular.z;
+        float theta_truth = (atan2((host_mocap.pose.position.y-car_pose.pose.position.y),(host_mocap.pose.position.x-car_pose.pose.position.x)) - atan2(target_gvel(1),target_gvel(0)));
+        if(theta_truth>pi)
+            theta_truth = theta_truth - 2*pi;
+        else if(theta_truth<-pi)
+            theta_truth = theta_truth + 2*pi;
         //ROS_INFO("ground_truth: %f",(atan2((host_mocap.pose.position.y-car_pose.pose.position.y),(host_mocap.pose.position.x-car_pose.pose.position.x)) - atan2(target_gvel(1),target_gvel(0)))/pi*180);
         /*tf::Quaternion q_tf;
         q_tf.setRPY(0,0,car_angle.data);
@@ -1273,7 +1278,7 @@ int main(int argc, char **argv)
         //execute correct if the target is detected
         float bb_aspect_ratio = box.data[4]/box.data[3];      //set an aspect ratio to tell if the obstacle appears
         ROS_INFO("asp_ratio: %.3f", asp_ratio);
-        if(box.data[0] >= 0.5)// && bb_aspect_ratio >= asp_ratio)
+        if(box.data[0] >= 0.5 && bb_aspect_ratio >= asp_ratio)
         {
             measurement_flag = true;
             //if the measurement is lost for 3s, set the feature vector state as measurement when the bounding box appear
@@ -1288,7 +1293,7 @@ int main(int argc, char **argv)
             }
             if(measurement_true_count > 3*loop_rate && x(6) <=1)
             {
-                asp_ratio = 1.7;
+                asp_ratio = 1.65;
             }
             measurement_true_count++;
             measurement_false_count = 0;
@@ -1415,6 +1420,7 @@ int main(int argc, char **argv)
             err_uroll_sum = 0;
 
             follow(vir1,host_mocap,&vs,0,0);
+            local_vel_pub.publish(vs);
             if(box.data[0] >= 0.8)
                 ROS_INFO("target detected");
         }
@@ -1446,20 +1452,20 @@ int main(int argc, char **argv)
         //ROS_INFO("estimate angle: %f",(atan2((host_mocap.pose.position.y-x(4)),(host_mocap.pose.position.x-x(3))) - atan2(x(7),x(6)))/pi*180);
         ROS_INFO("ukf_theta: %.3f",x(9)/pi*180);
 
-        measure_value.feature.x = (host_mocap.pose.position.x - car_pose.pose.position.x)/(host_mocap.pose.position.y - car_pose.pose.position.y);
-        measure_value.feature.y = (host_mocap.pose.position.z - car_pose.pose.position.z)/(host_mocap.pose.position.y - car_pose.pose.position.y);
-        measure_value.feature.z = (host_mocap.pose.position.y - car_pose.pose.position.y);
-        measure_value.target_pose.x = car_pose.pose.position.x + 0.8;// + 1.3827;
+        measure_value.feature.x = host_mocap.pose.position.x;
+        measure_value.feature.y = host_mocap.pose.position.y;
+        measure_value.feature.z = theta_truth;
+        measure_value.target_pose.x = car_pose.pose.position.x;// + 1.3827;
         measure_value.target_pose.y = car_pose.pose.position.y;// + 2.03453;
-        measure_value.target_pose.z = car_pose.pose.position.z + 0.5;// + 0.75;
-        measure_value.target_vel.x = target_gvel(0);
+        measure_value.target_pose.z = x(9);// + 0.75;
+        measure_value.target_vel.x = rpy_mocap.yaw;
         measure_value.target_vel.y = target_gvel(1);
         measure_value.target_vel.z = target_gvel(2);
-        estimate_value.feature.x = cx - center_u;
-        estimate_value.feature.y = (cy + 0.2*image_height) - center_v;
-        estimate_value.feature.z = desired_distance - box_area;                            //depth = 1/x(2)
-        estimate_value.target_pose.x = x(3);
-        estimate_value.target_pose.y = x(4);
+        estimate_value.feature.x = x(0);//cx - center_u;
+        estimate_value.feature.y = x(1);//(cy + 0.2*image_height) - center_v;
+        estimate_value.feature.z = x(2);//desired_distance - box_area;                            //depth = 1/x(2)
+        estimate_value.target_pose.x = x(9);//x(3);
+        estimate_value.target_pose.y = ibvs_mode;//x(4);
         estimate_value.target_pose.z = x(5);
         estimate_value.target_vel.x = x(6);
         estimate_value.target_vel.y = x(7);
@@ -1469,7 +1475,7 @@ int main(int argc, char **argv)
         measurement_pub.publish(measure_value);
         estimate_pub.publish(estimate_value);
         mocap_pos_pub.publish(host_mocap);
-        local_vel_pub.publish(vs);
+        //local_vel_pub.publish(vs);
         ros::spinOnce();
         rate.sleep();
 
