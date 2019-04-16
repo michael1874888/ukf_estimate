@@ -31,8 +31,10 @@ optimal_ibvs = False
 def callback(msg):
     global tar_vel, X_state_, optimal_ibvs
     tar_vel = np.array([msg.target_vel.x, msg.target_vel.y, msg.target_vel.z])
-    X_state_ = DM([msg.feature.x, msg.feature.y, msg.feature.z, msg.target_pose.x])
-    optimal_ibvs = msg.target_pose.y
+    X_state_ = DM([msg.feature_1.data, msg.feature_2.data, msg.feature_3.data, msg.feature_4.data])
+    optimal_ibvs = msg.cmode.data
+    #print('state',X_state_)
+    #print('flag',optimal_ibvs)
 
 drone_idx = 0
 host_mocap = PoseStamped()

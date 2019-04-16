@@ -1452,20 +1452,24 @@ int main(int argc, char **argv)
         //ROS_INFO("estimate angle: %f",(atan2((host_mocap.pose.position.y-x(4)),(host_mocap.pose.position.x-x(3))) - atan2(x(7),x(6)))/pi*180);
         ROS_INFO("ukf_theta: %.3f",x(9)/pi*180);
 
-        measure_value.feature.x = host_mocap.pose.position.x;
-        measure_value.feature.y = host_mocap.pose.position.y;
-        measure_value.feature.z = theta_truth;
+        measure_value.cmode.data = ibvs_mode;
+        measure_value.feature_1.data = host_mocap.pose.position.x;
+        measure_value.feature_2.data = host_mocap.pose.position.y;
+        measure_value.feature_3.data = rpy_mocap.yaw;                          //depth = 1/x(2)
+        measure_value.feature_4.data = theta_truth;
         measure_value.target_pose.x = car_pose.pose.position.x;// + 1.3827;
         measure_value.target_pose.y = car_pose.pose.position.y;// + 2.03453;
-        measure_value.target_pose.z = x(9);// + 0.75;
-        measure_value.target_vel.x = rpy_mocap.yaw;
+        measure_value.target_pose.z = car_pose.pose.position.z;// + 0.75;
+        measure_value.target_vel.x = target_gvel(0);
         measure_value.target_vel.y = target_gvel(1);
         measure_value.target_vel.z = target_gvel(2);
-        estimate_value.feature.x = x(0);//cx - center_u;
-        estimate_value.feature.y = x(1);//(cy + 0.2*image_height) - center_v;
-        estimate_value.feature.z = x(2);//desired_distance - box_area;                            //depth = 1/x(2)
-        estimate_value.target_pose.x = x(9);//x(3);
-        estimate_value.target_pose.y = ibvs_mode;//x(4);
+        estimate_value.cmode.data = ibvs_mode;
+        estimate_value.feature_1.data = x(0);//cx - center_u;
+        estimate_value.feature_2.data = x(1);//(cy + 0.2*image_height) - center_v;
+        estimate_value.feature_3.data = x(2);//desired_distance - box_area;                            //depth = 1/x(2)
+        estimate_value.feature_4.data = x(9);
+        estimate_value.target_pose.x = x(3);
+        estimate_value.target_pose.y = x(4);
         estimate_value.target_pose.z = x(5);
         estimate_value.target_vel.x = x(6);
         estimate_value.target_vel.y = x(7);
