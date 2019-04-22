@@ -59,7 +59,7 @@
 	 <param name="process_noise_6" value="0.5" />
      <param name="process_noise_7" value="0.5" />
      <param name="process_noise_8" value="0.5" />
-     <param name="process_noise_8" value="0.00025" />
+     <param name="process_noise_9" value="0.01" />
 
    </node>
 
