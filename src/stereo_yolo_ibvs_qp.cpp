@@ -65,7 +65,10 @@ float Tdroll_ibvs = 0;
 float desired_distance = 0.6;
 float camera_offset = 0;
 float desired_heading = 0;							//-pi/2
-int yolo_crop = 80;
+float desired_relative_heading = pi/2;
+float asp_ratio = 1.5;
+int yolo_crop = 108;
+int loop_rate = 30;
 
 float err_ux, err_uy, err_uz, err_uroll;
 float err_ux_pre = 0, err_uy_pre = 0, err_uz_pre = 0, err_uroll_pre = 0;	//initialize
@@ -86,6 +89,7 @@ geometry_msgs::PoseStamped car_pose_pre;
 geometry_msgs::Twist car_vel;
 sensor_msgs::Imu imu_data;
 std_msgs::Float32MultiArray box;
+std_msgs::Float64 car_angle;
 std_msgs::Float64 bb_depth;
 ukf_estimate::Trajectory3D target_qp;
 typedef struct
@@ -144,10 +148,16 @@ void depth_cb(const std_msgs::Float64::ConstPtr& msg) {
     //ROS_INFO("box");
 }
 
+void angle_cb(const std_msgs::Float64::ConstPtr& msg) {
+    car_angle = *msg;
+    //ROS_INFO("box");
+}
+
 void qp_cb(const ukf_estimate::Trajectory3D::ConstPtr& msg) {
     target_qp = *msg;
     //ROS_INFO("box");
 }
+
 ////////////////////UKF Global variable//////////////////
 double L;
 double dt;
@@ -228,6 +238,7 @@ enum state{
     member_vqx,
     member_vqy,
     member_vqz,
+    member_theta,
     statesize
 };
 
@@ -238,6 +249,7 @@ enum measurement{
     member_mxc,
     member_myc,
     member_mzc,
+    member_mtheta,
     measurementsize
 };
 ////////////////////////////////////////////////////////////////
@@ -249,14 +261,15 @@ Eigen::MatrixXd dynamics(Eigen::MatrixXd sigma_state){
     x_size = statesize;
     x_sigmavector_size = 2*x_size+1;
     Eigen::MatrixXd predict_sigma_state(x_size,x_sigmavector_size);
-    ROS_INFO("vx:%.3f vy:%.3f vz:%.3f",camera_vel(0),camera_vel(1),camera_vel(2));
-    ROS_INFO("wx:%.3f wy:%.3f wz:%.3f",camera_wvel(0),camera_wvel(1),camera_wvel(2));
+    //ROS_INFO("vx:%.3f vy:%.3f vz:%.3f",camera_vel(0),camera_vel(1),camera_vel(2));
+    //ROS_INFO("wx:%.3f wy:%.3f wz:%.3f",camera_wvel(0),camera_wvel(1),camera_wvel(2));
 
     for(int i=0;i<x_sigmavector_size;i++){
 
         double x1 = sigma_state(member_x1,i);
         double x2 = sigma_state(member_x2,i);
         double x3 = sigma_state(member_x3,i);
+        double theta = sigma_state(member_theta,i);
         Eigen::VectorXd q_pose;
         Eigen::VectorXd vq;
         Eigen::Vector3d vq_cam;
@@ -265,10 +278,12 @@ Eigen::MatrixXd dynamics(Eigen::MatrixXd sigma_state){
         q_pose << sigma_state(member_xq,i), sigma_state(member_yq,i), sigma_state(member_zq,i);
         vq << sigma_state(member_vqx,i), sigma_state(member_vqy,i), sigma_state(member_vqz,i); 
         vq_cam = rot_g2c*vq;
+        Eigen::Vector3d aq(target_qp.acc.x, target_qp.acc.y, target_qp.acc.z);
         //vq << target_g2cvel(0), target_g2cvel(1), target_g2cvel(2);
         double x1_ ;
         double x2_ ;
         double x3_ ;
+        double theta_ ;
         Eigen::VectorXd q_pose_;
         q_pose_.setZero(3);
         Eigen::VectorXd vq_;
@@ -286,13 +301,22 @@ Eigen::MatrixXd dynamics(Eigen::MatrixXd sigma_state){
         else
         {
             //vq << target_qp.vel.x, target_qp.vel.y, target_qp.vel.z;
-            Eigen::Vector3d aq(target_qp.acc.x, target_qp.acc.y, target_qp.acc.z);
+            //Eigen::Vector3d vq_qp(target_qp.vel.x, target_qp.vel.y, target_qp.vel.z);
 
             q_pose_ = q_pose + vq*dt;
             vq_ = vq + aq*dt;
         }
 
         //ROS_INFO("vq: x:%.3f y:%.3f z:%.3f",vq_(0),vq_(1),vq_(2));
+        if(aq(0)>=0.01)
+            theta_ = theta + (((global_vel(1)-vq(1))*(host_mocap.pose.position.x-q_pose(0))-((global_vel(0)-vq(0))*(host_mocap.pose.position.y-q_pose(1))))/(pow((host_mocap.pose.position.x-q_pose(0)),2)+pow((host_mocap.pose.position.y-q_pose(1)),2))-(aq(1)*vq(0)-aq(0)*vq(1))/(pow(vq(0),2)+pow(vq(1),2)))*dt;
+        else
+            theta_ = theta + (((global_vel(1)-vq(1))*(host_mocap.pose.position.x-q_pose(0))-((global_vel(0)-vq(0))*(host_mocap.pose.position.y-q_pose(1))))/(pow((host_mocap.pose.position.x-q_pose(0)),2)+pow((host_mocap.pose.position.y-q_pose(1)),2)))*dt;//-(aq(1)*vq(0)-aq(0)*vq(1))/(pow(vq(0),2)+pow(vq(1),2)))*dt;
+
+        if(theta_>pi)
+            theta_ = theta_ - 2*pi;
+        else if(theta_<-pi)
+            theta_ = theta_ + 2*pi;
 
 
         predict_sigma_state(member_x1,i) =  x1_;
@@ -304,6 +328,7 @@ Eigen::MatrixXd dynamics(Eigen::MatrixXd sigma_state){
         predict_sigma_state(member_vqx,i) =  vq_(0);
         predict_sigma_state(member_vqy,i) =  vq_(1);
         predict_sigma_state(member_vqz,i) =  vq_(2);
+        predict_sigma_state(member_theta,i) =  theta_;
 
     }
     ROS_INFO("x1:%.3f x2:%.3f x3:%.3f, z:%.3f",sigma_state(member_x1,0),sigma_state(member_x2,0),sigma_state(member_x3,0),1/sigma_state(member_x3,0));
@@ -340,6 +365,7 @@ Eigen::MatrixXd state_to_measure(Eigen::MatrixXd sigma_state){
         predict_sigma_measure( member_myc ,i) =   sigma_state(member_yq,i) - rel_posec2g(1);
         predict_sigma_measure( member_mzc ,i) =   sigma_state(member_zq,i) - rel_posec2g(2);
         //ROS_INFO("rel_pose: x:%.3f y:%.3f z:%.3f",rel_pose(0),rel_pose(1),rel_pose(2));
+        predict_sigma_measure( member_mtheta ,i) =  sigma_state(member_theta,i);
     }
     //ROS_INFO("xq:%.3f",sigma_state(member_xq,0));
     return predict_sigma_measure;
@@ -502,6 +528,7 @@ void correct(Eigen::VectorXd measure){
         y(0) = y_hat(0);
         y(1) = y_hat(1);
         y(2) = y_hat(2);
+        y(6) = y_hat(6);
     }
     x = x_hat + Kalman_gain *(y-y_hat);
 
@@ -524,6 +551,7 @@ void noise_estimate(int window_size)
     Q_window_element.setZero(x_size,x_size);
     R_window_element.setZero(y_size,y_size);
     v_weight.resize(window_size);
+    double accu = 0;
 
 
     Eigen::VectorXd q_window_sum, r_window_sum;
@@ -539,20 +567,20 @@ void noise_estimate(int window_size)
     delta_S = (S_gain*(P_yy_ + R).trace())/(((y - y_hat).transpose())*(y - y_hat));
     w_element = sqrt(((x - x_hat).transpose())*(x - x_hat))*sqrt(((y_hat - y).transpose())*(y_hat - y))*delta_S;
 
-    q_window.push_front(q_window_element);
-    r_window.push_front(r_window_element);
+    //q_window.push_front(q_window_element);
+    //r_window.push_front(r_window_element);
     Q_window.push_front(Q_window_element);
-    R_window.push_front(R_window_element);
+    //R_window.push_front(R_window_element);
     w_window.push_front(w_element);
 
 
     if(q_window.size()>window_size || r_window.size()>window_size || Q_window.size()>window_size || R_window.size()>window_size)
     {
         //ROS_INFO("estimate noise");
-        q_window.resize(window_size);
-        r_window.resize(window_size);
+        //q_window.resize(window_size);
+        //r_window.resize(window_size);
         Q_window.resize(window_size);
-        R_window.resize(window_size);
+        //R_window.resize(window_size);
         w_window.resize(window_size);
     }
 
@@ -560,27 +588,30 @@ void noise_estimate(int window_size)
     if(q_window.size()==window_size || r_window.size()==window_size || Q_window.size()==window_size || R_window.size()==window_size)
     {
         //ROS_INFO("estimate noise");
-        q_window_sum.setZero(x_size);
-        r_window_sum.setZero(y_size);
+        //q_window_sum.setZero(x_size);
+        //r_window_sum.setZero(y_size);
         Q_window_sum.setZero(x_size,x_size);
-        R_window_sum.setZero(y_size,y_size);
-
+        //R_window_sum.setZero(y_size,y_size);
 
         for(int i=0;i<window_size;i++)
         {
-            v_weight.at(i) = w_window.at(i)/std::accumulate(w_window.begin(), w_window.end(), 0);
+            accu += w_window.at(i);
+        }
+        for(int i=0;i<window_size;i++)
+        {
+            v_weight.at(i) = w_window.at(i)/accu;
             //cout<<"w"<<i<<": "<<w_window.at(i);
         }
 
         for(int i=0;i<window_size;i++)
         {
-            q_window_sum += q_window.at(i)*v_weight.at(i);
-            r_window_sum += r_window.at(i)*v_weight.at(i);
+            //q_window_sum += q_window.at(i)*v_weight.at(i);
+            //r_window_sum += r_window.at(i)*v_weight.at(i);
             Q_window_sum += Q_window.at(i)*v_weight.at(i);
-            R_window_sum += R_window.at(i)*v_weight.at(i);
+            //R_window_sum += R_window.at(i)*v_weight.at(i);
             //cout<<"v_weight"<<i<<": "<<v_weight.at(i);
         }
-        if(callback_spin_count>200)
+        if(callback_spin_count>4*loop_rate)
         {
             //q = q_window_sum;
             //r = r_window_sum;
@@ -668,11 +699,11 @@ void ibvs(vir& vir, std_msgs::Float32MultiArray box, geometry_msgs::PoseStamped&
     vq_global << x(6), x(7), x(8);
     cout << "\ntarget_gvel\n" <<vq_global;
 
-    box_width = box.data[4]*image_width;
-    box_height = box.data[3]*image_height*(image_height - 2*yolo_crop);
+    //box_width = box.data[4]*image_width;
+    //box_height = box.data[3]*image_height*(image_height - 2*yolo_crop);
 
     model_true_area = model_width*model_height;
-    model_image_area = box_width*box_height;
+    //model_image_area = box_width*box_height;
 
     box_x_center = box.data[2]*image_width;
     box_y_center = yolo_crop + box.data[1]*(image_height - 2*yolo_crop);
@@ -833,8 +864,8 @@ void ibvs_ukf(vir& vir, Eigen::VectorXd state, geometry_msgs::PoseStamped& host_
 
     errv_cam << 0, command_vel_tmp(0), command_vel_tmp(1);
     errw_cam << 0, command_vel_tmp(2), 0;
-    //cout << "\ncommand_vel_tmp\n" <<command_vel_tmp << "\nerrw_cam\n" <<errw_cam;
     errv_body << 0, ((rpy_mocap.yaw - desired_heading)*depth_Z*image_width/(fov_x*fx)/* - erru*depth_Z*/), 0;
+    //errv_body << 0, ((state(member_theta) - desired_relative_heading)*depth_Z*image_width/(fov_x*fx)/* - erru*depth_Z*/), 0;
     errv_cam(0) = (rot_b2c*errv_body)(0);
 
     err_ux = errv_cam(0);// + 1000*target_gvel(0);
@@ -946,7 +977,6 @@ char getch()
 int main(int argc, char **argv)
 {
     string topic_box;
-    int loop_rate = 30;
     ros::init(argc, argv, "yolo_ibvs_ukf");
     ros::NodeHandle nh;
     ros::param::get("~topic_box", topic_box);
@@ -960,6 +990,7 @@ int main(int argc, char **argv)
     ros::Subscriber bb_box_sub = nh.subscribe<std_msgs::Float32MultiArray>(topic_box, 1, box_cb);
     ros::Subscriber bb_depth_sub = nh.subscribe<std_msgs::Float64>("/bb_center_depth", 1, depth_cb);
     ros::Subscriber qp_sub = nh.subscribe<ukf_estimate::Trajectory3D>("/target_qp",1,qp_cb);
+    ros::Subscriber angel_filt_sub = nh.subscribe<std_msgs::Float64>("/car_angle_avg", 1, angle_cb);
 
     ros::Subscriber state_sub = nh.subscribe<mavros_msgs::State>("drone1/mavros/state", 10, state_cb);
     //ros::Publisher mocap_pos_pub = nh.advertise<geometry_msgs::PoseStamped>("mavros/mocap/pose", 1);
@@ -991,6 +1022,7 @@ int main(int argc, char **argv)
     ros::Time current_time = ros::Time::now();
     ros::Time previous_time = ros::Time::now();
     geometry_msgs::TwistStamped vs;
+    int measurement_true_count = 0;
     int measurement_false_count = 0;
     vir vir1;
 
@@ -1035,6 +1067,7 @@ int main(int argc, char **argv)
     x(0) = (box.data[2]*image_width - cx)/fx;
     x(1) = ((yolo_crop + box.data[1]*(image_height - 2*yolo_crop)) - cy)/fy;
     x(2) = 1/bb_depth.data;
+    x(9) = car_angle.data;
 
     //increase the initial value of P can increase the speed of convergence
     Eigen::MatrixXd P_init;
@@ -1048,6 +1081,7 @@ int main(int argc, char **argv)
     ros::param::get("~P_init_6", P_init(6,6));
     ros::param::get("~P_init_7", P_init(7,7));
     ros::param::get("~P_init_8", P_init(8,8));
+    ros::param::get("~P_init_9", P_init(9,9));
     P = P_init;             //set initial P matrix
 
 
@@ -1061,6 +1095,7 @@ int main(int argc, char **argv)
     ros::param::get("~measurement_noise_3", measurement_noise(3,3));
     ros::param::get("~measurement_noise_4", measurement_noise(4,4));
     ros::param::get("~measurement_noise_5", measurement_noise(5,5));
+    ros::param::get("~measurement_noise_6", measurement_noise(6,6));
     R = measurement_noise;             //set measurement noise
 
     Eigen::MatrixXd process_noise;
@@ -1075,6 +1110,7 @@ int main(int argc, char **argv)
     ros::param::get("~process_noise_6", process_noise(6,6));
     ros::param::get("~process_noise_7", process_noise(7,7));
     ros::param::get("~process_noise_8", process_noise(8,8));
+    ros::param::get("~process_noise_9", process_noise(9,9));
     Q = process_noise;              //set process noise
 
     mavros_msgs::SetMode offb_set_mode;
@@ -1114,6 +1150,7 @@ int main(int argc, char **argv)
             x(0) = (box.data[2]*image_width - cx)/fx;
             x(1) = ((yolo_crop + box.data[1]*(image_height - 2*yolo_crop)) - cy)/fy;
             x(2) = 1/bb_depth.data;
+            x(9) = car_angle.data;
             P = P_init;
             R = measurement_noise;
             Q = process_noise;
@@ -1190,22 +1227,41 @@ int main(int argc, char **argv)
         center_u = box.data[2]*image_width;
         center_v = yolo_crop + box.data[1]*(image_height - 2*yolo_crop);
         //box_area = sqrt(((model_width*model_height)/(box.data[4]*image_width*box.data[3]*image_height))*fx*fy);
-        measure_vector<<center_u, center_v, bb_depth.data, host_mocap.pose.position.x, host_mocap.pose.position.y, host_mocap.pose.position.z;
-        ROS_INFO("u:%.3f v:%.3f depth:%.3f", center_u, center_v, bb_depth.data);
+        measure_vector<<center_u, center_v, bb_depth.data, host_mocap.pose.position.x, host_mocap.pose.position.y, host_mocap.pose.position.z, car_angle.data;
 
         //execute correct if the target is detected
-        if(box.data[0] >= 0.8 && bb_depth.data>0 && bb_depth.data<10)
+        float bb_aspect_ratio = box.data[4]/box.data[3];      //set an aspect ratio to tell if the obstacle appears
+        ROS_INFO("asp_ratio: %.3f", bb_aspect_ratio);
+        if(box.data[0] >= 0.8 && bb_depth.data>0.5 && bb_depth.data<1.5)// && bb_aspect_ratio >= asp_ratio)
         {
             measurement_flag = true;
+            //if the measurement is lost for 3s, set the feature vector state as measurement when the bounding box appear
+            if(measurement_false_count > 2*loop_rate)
+            {
+                //initialize();
+                x(0) = (box.data[2]*image_width - cx)/fx;
+                x(1) = (box.data[1]*image_height - cy)/fy;
+                x(2) = 1/sqrt(pow((host_mocap.pose.position.x-car_pose.pose.position.x),2) + pow((host_mocap.pose.position.y-car_pose.pose.position.y),2));
+                x(9) = car_angle.data;
+            }
+            if(measurement_true_count > 2*loop_rate && x(6) <=1)
+            {
+                asp_ratio = 1.5;
+            }
+            measurement_true_count++;
             measurement_false_count = 0;
         }
         else
         {
-            if(measurement_false_count > 4*loop_rate)
+            if(measurement_false_count > 2*loop_rate || bb_depth.data<=0.45)
                 ibvs_mode = false;
+            if(measurement_false_count > 2*loop_rate)
+                asp_ratio = 1.1;
 
             measurement_flag = false;
             measurement_false_count++;
+            measurement_true_count = 0;
+            ROS_INFO("YOLO False");
         }
 
         correct(measure_vector);
@@ -1246,6 +1302,12 @@ int main(int argc, char **argv)
                 break;
             case 100:    // key right
                 vir1.y -= 0.05;
+                break;
+            case 101:    // increase desired heading
+                desired_relative_heading += 0.1;
+                break;
+            case 113:    // decrease desired heading
+                desired_relative_heading += -0.1;
                 break;
             case 115:    // key origin
             {
@@ -1311,6 +1373,7 @@ int main(int argc, char **argv)
             err_uroll_sum = 0;
 
             follow(vir1,host_mocap,&vs,0,0);
+            local_vel_pub.publish(vs);
             if(box.data[0] >= 0.8)
                 ROS_INFO("target detected");
         }
@@ -1338,22 +1401,30 @@ int main(int argc, char **argv)
         }
         //ROS_INFO("drone: x:%.3f  y:%.3f  z:%.3f", host_mocap.pose.position.x, host_mocap.pose.position.y, host_mocap.pose.position.z);
         //ROS_INFO("car:   x:%.3f  y:%.3f  z:%.3f", car_pose.pose.position.x, car_pose.pose.position.y, car_pose.pose.position.z);
+        ROS_INFO("desired_relative_angle: %.3f", desired_relative_heading/pi*180);
+        ROS_INFO("u:%.3f v:%.3f depth:%.3f theta:%.3f", center_u, center_v, bb_depth.data, car_angle.data/pi*180);
+        ROS_INFO("ukf_theta: %.3f",x(9)/pi*180);
+        ROS_INFO("car_vel:   x:%.3f  y:%.3f  z:%.3f", x(6), x(7), x(8));
         target_gvel << (car_pose.pose.position.x - car_pose_pre.pose.position.x)/dt, (car_pose.pose.position.y - car_pose_pre.pose.position.y)/dt, (car_pose.pose.position.z - car_pose_pre.pose.position.z)/dt;
         target_gwvel << car_vel.angular.x, car_vel.angular.y, car_vel.angular.z;
         car_pose_pre = car_pose;
 
-        measure_value.feature.x = (host_mocap.pose.position.x - car_pose.pose.position.x)/(host_mocap.pose.position.y - car_pose.pose.position.y);
-        measure_value.feature.y = (host_mocap.pose.position.z - car_pose.pose.position.z)/(host_mocap.pose.position.y - car_pose.pose.position.y);
-        measure_value.feature.z = (host_mocap.pose.position.y - car_pose.pose.position.y);
+        measure_value.cmode.data = ibvs_mode;
+        measure_value.feature_1.data = (host_mocap.pose.position.x - car_pose.pose.position.x)/(host_mocap.pose.position.y - car_pose.pose.position.y);
+        measure_value.feature_2.data = (host_mocap.pose.position.z - car_pose.pose.position.z)/(host_mocap.pose.position.y - car_pose.pose.position.y);
+        measure_value.feature_3.data = (host_mocap.pose.position.y - car_pose.pose.position.y);
+        measure_value.feature_4.data = -1;
         measure_value.target_pose.x = car_pose.pose.position.x;
         measure_value.target_pose.y = car_pose.pose.position.y;
         measure_value.target_pose.z = car_pose.pose.position.z + 0.03;
         measure_value.target_vel.x = target_gvel(0);
         measure_value.target_vel.y = target_gvel(1);
         measure_value.target_vel.z = target_gvel(2);
-        estimate_value.feature.x = x(0);
-        estimate_value.feature.y = x(1);
-        estimate_value.feature.z = (1/x(2));                            //depth = 1/x(2)
+        estimate_value.cmode.data = ibvs_mode;
+        estimate_value.feature_1.data = x(0);
+        estimate_value.feature_2.data = x(1);
+        estimate_value.feature_3.data = x(2);                            //depth = 1/x(2)
+        estimate_value.feature_4.data = x(9);
         estimate_value.target_pose.x = x(3) + 0.25;
         estimate_value.target_pose.y = x(4);
         estimate_value.target_pose.z = x(5);
@@ -1364,7 +1435,7 @@ int main(int argc, char **argv)
 
         measurement_pub.publish(measure_value);
         estimate_pub.publish(estimate_value);
-        local_vel_pub.publish(vs);
+        //local_vel_pub.publish(vs);
         ros::spinOnce();
         rate.sleep();
 

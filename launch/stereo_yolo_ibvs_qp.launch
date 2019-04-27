@@ -27,13 +27,15 @@
 	 <param name="P_init_6" value="0.1" />
      <param name="P_init_7" value="0.1" />
      <param name="P_init_8" value="0.1" />
+     <param name="P_init_9" value="0.1" />
 
-	 <param name="measurement_noise_0" value="200" />
-     <param name="measurement_noise_1" value="200" />
+	 <param name="measurement_noise_0" value="20" />
+     <param name="measurement_noise_1" value="20" />
      <param name="measurement_noise_2" value="0.0005" />
 	 <param name="measurement_noise_3" value="0.0001" />
      <param name="measurement_noise_4" value="0.0001" />
      <param name="measurement_noise_5" value="0.0001" />
+     <param name="measurement_noise_6" value="0.001" />
 
 	 <param name="process_noise_0" value="0.0008" />
      <param name="process_noise_1" value="0.0008" />
@@ -44,6 +46,7 @@
 	 <param name="process_noise_6" value="0.5" />
      <param name="process_noise_7" value="0.5" />
      <param name="process_noise_8" value="0.5" />
+     <param name="process_noise_9" value="0.01" />
 
    </node>
 
