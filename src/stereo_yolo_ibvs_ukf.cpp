@@ -72,6 +72,8 @@ float err_ux_dev = 0, err_uy_dev = 0, err_uz_dev = 0, err_uroll_dev = 0;
 float err_ux_sum = 0, err_uy_sum = 0, err_uz_sum = 0, err_uroll_sum = 0;
 bool ibvs_mode = false;
 bool ukf_mode = false;
+bool orbit_mode = false;
+bool orbit_mode2 = false;       //orbit origin
 /////////////////////////////////////////////////////
 
 bool measurement_flag = true;
@@ -600,12 +602,12 @@ void follow(vir& vir, geometry_msgs::PoseStamped& host_mocap, geometry_msgs::Twi
     float ux, uy, uz, uroll;
     float local_x, local_y;
 
-    local_x = cos(vir.roll)*dis_x+sin(vir.roll)*dis_y;
-    local_y = -sin(vir.roll)*dis_x+cos(vir.roll)*dis_y;
+    local_x = cos(vir.roll)*dis_x-sin(vir.roll)*dis_y;
+    local_y = sin(vir.roll)*dis_x+cos(vir.roll)*dis_y;
 
-    errx = vir.x - host_mocap.pose.position.x - local_x;
-    erry = vir.y - host_mocap.pose.position.y - local_y;
-    errz = vir.z - host_mocap.pose.position.z - 0;
+    errx = vir.x - host_mocap.pose.position.x + local_x;
+    erry = vir.y - host_mocap.pose.position.y + local_y;
+    errz = vir.z - host_mocap.pose.position.z + 0;
     err_roll = vir.roll - rpy_mocap.yaw;
     if(err_roll>pi)
         err_roll = err_roll - 2*pi;
@@ -1237,6 +1239,13 @@ int main(int argc, char **argv)
             case 49:    // virtual leader mode
             {
                 ibvs_mode = false;
+                if(orbit_mode == true)
+                {
+                    orbit_mode = false;
+                    vir1.x = host_mocap.pose.position.x;
+                    vir1.y = host_mocap.pose.position.y;
+                    vir1.z = host_mocap.pose.position.z;
+                }
                 break;
             }
             case 50:    // ibvs mode
@@ -1250,6 +1259,44 @@ int main(int argc, char **argv)
                     ukf_mode = true;
                 else
                     ukf_mode = false;
+
+                break;
+            }
+            case 52:    // orbit mode
+            {
+                if(orbit_mode == false)
+                {
+                    orbit_mode = true;
+                    vir1.x = x(3) + model_width/2;
+                    vir1.y = x(4);
+                    vir1.z = x(5) + 0.05;
+                }
+                else
+                {
+                    orbit_mode = false;
+                    vir1.x = host_mocap.pose.position.x;
+                    vir1.y = host_mocap.pose.position.y;
+                    vir1.z = host_mocap.pose.position.z;
+                }
+
+                break;
+            }
+            case 53:    // orbit origin
+            {
+                if(orbit_mode2 == false)
+                {
+                    orbit_mode2 = true;
+                    vir1.x = 1.54;
+                    vir1.y = -0.2;
+                    vir1.z = host_mocap.pose.position.z;
+                }
+                else
+                {
+                    orbit_mode2 = false;
+                    vir1.x = host_mocap.pose.position.x;
+                    vir1.y = host_mocap.pose.position.y;
+                    vir1.z = host_mocap.pose.position.z;
+                }
 
                 break;
             }
@@ -1276,6 +1323,7 @@ int main(int argc, char **argv)
         {
             ROS_INFO("position: %.3f, %.3f, %.3f", host_mocap.pose.position.x, host_mocap.pose.position.y, host_mocap.pose.position.z);
             ROS_INFO("setpoint: %.2f, %.2f, %.2f, %.2f", vir1.x, vir1.y, vir1.z, vir1.roll/pi*180);
+            ROS_INFO("estimate position: %.2f, %.2f, %.2f", (x(3) + model_width/2), x(4), (x(5) + 0.05));
             err_ux_pre = 0;
             err_uy_pre = 0;
             err_uz_pre = 0;
@@ -1289,7 +1337,19 @@ int main(int argc, char **argv)
             err_uz_sum = 0;
             err_uroll_sum = 0;
 
-            follow(vir1,host_mocap,&vs,0,0);
+            if(orbit_mode)
+            {
+                follow(vir1,host_mocap,&vs,-(desired_distance+0.55),0);     //Be careful of the bias axis
+                ROS_INFO("orbiting");
+            }
+            else if(orbit_mode2)
+            {
+                follow(vir1,host_mocap,&vs,-(desired_distance+0.5),0);
+                ROS_INFO("orbiting2");
+            }
+            else
+                follow(vir1,host_mocap,&vs,0,0);
+
             if(box.data[0] >= 0.8)
                 ROS_INFO("target detected");
         }
