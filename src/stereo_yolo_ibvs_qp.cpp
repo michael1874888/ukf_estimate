@@ -64,9 +64,9 @@ float Tdroll_ibvs = 0;
 
 float desired_distance = 0.6;
 float camera_offset = 0;
-float desired_heading = 0;							//-pi/2
+float desired_heading = -pi/2;							//-pi/2
 float desired_relative_heading = pi/2;
-float asp_ratio = 1.5;
+float asp_ratio = 1.1;
 int yolo_crop = 108;
 int loop_rate = 30;
 
@@ -308,9 +308,9 @@ Eigen::MatrixXd dynamics(Eigen::MatrixXd sigma_state){
         }
 
         //ROS_INFO("vq: x:%.3f y:%.3f z:%.3f",vq_(0),vq_(1),vq_(2));
-        if(aq(0)>=0.01)
+        /*if(aq(0)>=0.01)
             theta_ = theta + (((global_vel(1)-vq(1))*(host_mocap.pose.position.x-q_pose(0))-((global_vel(0)-vq(0))*(host_mocap.pose.position.y-q_pose(1))))/(pow((host_mocap.pose.position.x-q_pose(0)),2)+pow((host_mocap.pose.position.y-q_pose(1)),2))-(aq(1)*vq(0)-aq(0)*vq(1))/(pow(vq(0),2)+pow(vq(1),2)))*dt;
-        else
+        else*/
             theta_ = theta + (((global_vel(1)-vq(1))*(host_mocap.pose.position.x-q_pose(0))-((global_vel(0)-vq(0))*(host_mocap.pose.position.y-q_pose(1))))/(pow((host_mocap.pose.position.x-q_pose(0)),2)+pow((host_mocap.pose.position.y-q_pose(1)),2)))*dt;//-(aq(1)*vq(0)-aq(0)*vq(1))/(pow(vq(0),2)+pow(vq(1),2)))*dt;
 
         if(theta_>pi)
@@ -1232,31 +1232,31 @@ int main(int argc, char **argv)
         //execute correct if the target is detected
         float bb_aspect_ratio = box.data[4]/box.data[3];      //set an aspect ratio to tell if the obstacle appears
         ROS_INFO("asp_ratio: %.3f", bb_aspect_ratio);
-        if(box.data[0] >= 0.8 && bb_depth.data>0.5 && bb_depth.data<1.5)// && bb_aspect_ratio >= asp_ratio)
+        if(box.data[0] >= 0.8 && bb_depth.data>0.5 && bb_depth.data<1.5 && bb_aspect_ratio >= asp_ratio)
         {
             measurement_flag = true;
-            //if the measurement is lost for 3s, set the feature vector state as measurement when the bounding box appear
+            //if the measurement is lost for 2s, set the feature vector state as measurement when the bounding box appear
             if(measurement_false_count > 2*loop_rate)
             {
                 //initialize();
                 x(0) = (box.data[2]*image_width - cx)/fx;
                 x(1) = (box.data[1]*image_height - cy)/fy;
-                x(2) = 1/sqrt(pow((host_mocap.pose.position.x-car_pose.pose.position.x),2) + pow((host_mocap.pose.position.y-car_pose.pose.position.y),2));
+                x(2) = 1/bb_depth.data;
                 x(9) = car_angle.data;
             }
             if(measurement_true_count > 2*loop_rate && x(6) <=1)
             {
-                asp_ratio = 1.5;
+                asp_ratio = 1.1;
             }
             measurement_true_count++;
             measurement_false_count = 0;
         }
         else
         {
-            if(measurement_false_count > 2*loop_rate || bb_depth.data<=0.45)
+            if(measurement_false_count > 4*loop_rate || bb_depth.data<=0.45)
                 ibvs_mode = false;
-            if(measurement_false_count > 2*loop_rate)
-                asp_ratio = 1.1;
+            //if(measurement_false_count > 2*loop_rate)
+                //asp_ratio = 1.1;
 
             measurement_flag = false;
             measurement_false_count++;
@@ -1268,12 +1268,6 @@ int main(int argc, char **argv)
 
         if(box.data[0] >= 0.8 || callback_spin_count >=80)
             noise_estimate(2*loop_rate);
-        //if(Q(6,6)<0.002)
-            //Q(6,6) = 0.002;
-        //if(Q(7,7)<0.002)
-            //Q(7,7) = 0.002;
-        //if(Q(8,8)<0.002)
-        //Q(8,8) = 0.002;
 
         int c = getch();
         //ROS_INFO("C: %d",c);
@@ -1435,7 +1429,7 @@ int main(int argc, char **argv)
 
         measurement_pub.publish(measure_value);
         estimate_pub.publish(estimate_value);
-        //local_vel_pub.publish(vs);
+        local_vel_pub.publish(vs);
         ros::spinOnce();
         rate.sleep();
 
