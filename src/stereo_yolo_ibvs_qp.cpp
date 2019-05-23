@@ -66,7 +66,7 @@ float desired_distance = 0.6;
 float camera_offset = 0;
 float desired_heading = -pi/2;							//-pi/2
 float desired_relative_heading = pi/2;
-float asp_ratio = 1.1;
+float asp_ratio = 1.15;
 int yolo_crop = 108;
 int loop_rate = 30;
 
@@ -75,6 +75,7 @@ float err_ux_pre = 0, err_uy_pre = 0, err_uz_pre = 0, err_uroll_pre = 0;	//initi
 float err_ux_dev = 0, err_uy_dev = 0, err_uz_dev = 0, err_uroll_dev = 0;
 float err_ux_sum = 0, err_uy_sum = 0, err_uz_sum = 0, err_uroll_sum = 0;
 bool ibvs_mode = false;
+bool pbvs_mode = false;
 bool ukf_mode = false;
 /////////////////////////////////////////////////////
 
@@ -911,25 +912,35 @@ void ibvs_ukf(vir& vir, Eigen::VectorXd state, geometry_msgs::PoseStamped& host_
     vir.z = host_mocap.pose.position.z;
 }
 
-void pbvs_ukf(Eigen::VectorXd state, geometry_msgs::PoseStamped& host_mocap, geometry_msgs::TwistStamped* vs, float dis_x, float dis_y)
+void pbvs_ukf(Eigen::VectorXd state, geometry_msgs::PoseStamped& host_mocap, geometry_msgs::TwistStamped* vs, float desired_relative_ang, float desired_dis)
 {
     float errx, erry, errz, err_roll;
     float ux, uy, uz, uroll;
+    float dis_x, dis_y;
     float local_x, local_y;
+    float heading_ang;
+    float x1, err_x1;
 
-    local_x = cos(0)*dis_x+sin(0)*dis_y;
-    local_y = -sin(0)*dis_x+cos(0)*dis_y;
+    heading_ang = 0;
+    dis_x = desired_dis*cos(desired_relative_ang);
+    dis_y = desired_dis*sin(desired_relative_ang);
+
+    local_x = cos(heading_ang)*dis_x-sin(heading_ang)*dis_y;
+    local_y = sin(heading_ang)*dis_x+cos(heading_ang)*dis_y;
+
+    x1 = state(member_x1);
+    err_x1 = x1 - (cx - cx)/fx;
 
     errx = (state(member_xq)) - host_mocap.pose.position.x + local_x;
-    erry = (state(member_yq) - 2.03453) - host_mocap.pose.position.y + local_y;
-    errz = (state(member_zq) - 0.75) - host_mocap.pose.position.z + 1;
-    err_roll = desired_heading - rpy_mocap.yaw;
+    erry = (state(member_yq)) - host_mocap.pose.position.y + local_y;
+    errz = (state(member_zq)) - host_mocap.pose.position.z + 0.1;
+    err_roll = (-1/(x1*x1+1))*err_x1;
+    /*err_roll = desired_heading - rpy_mocap.yaw;
     if(err_roll>pi)
         err_roll = err_roll - 2*pi;
     else if(err_roll<-pi)
-        err_roll = err_roll + 2*pi;
+        err_roll = err_roll + 2*pi;*/
 
-    ROS_INFO("target: %.3f, %.3f, %.3f",(state(member_xq) - 1.3827),(state(member_yq) - 2.03453),(state(member_zq) - 0.75));
 
     ux = KPx*errx;
     uy = KPy*erry;
@@ -938,7 +949,7 @@ void pbvs_ukf(Eigen::VectorXd state, geometry_msgs::PoseStamped& host_mocap, geo
 
     vs->twist.linear.x = ux + state(member_vqx);
     vs->twist.linear.y = uy + state(member_vqy);
-    vs->twist.linear.z = uz + state(member_vqz);
+    vs->twist.linear.z = uz;// + state(member_vqz);
     vs->twist.angular.z = uroll;
 
 }
@@ -1246,7 +1257,7 @@ int main(int argc, char **argv)
             }
             if(measurement_true_count > 2*loop_rate && x(6) <=1)
             {
-                asp_ratio = 1.1;
+                asp_ratio = 1.15;
             }
             measurement_true_count++;
             measurement_false_count = 0;
@@ -1314,6 +1325,10 @@ int main(int argc, char **argv)
             case 49:    // virtual leader mode
             {
                 ibvs_mode = false;
+                pbvs_mode = false;
+                vir1.x = host_mocap.pose.position.x;
+                vir1.y = host_mocap.pose.position.y;
+                vir1.z = host_mocap.pose.position.z;
                 break;
             }
             case 50:    // ibvs mode
@@ -1328,6 +1343,11 @@ int main(int argc, char **argv)
                 else
                     ukf_mode = false;
 
+                break;
+            }
+            case 52:    // pbvs mode
+            {
+                pbvs_mode = true;
                 break;
             }
             case 108:    // close arming
@@ -1353,6 +1373,7 @@ int main(int argc, char **argv)
         {
             ROS_INFO("position: %.3f, %.3f, %.3f", host_mocap.pose.position.x, host_mocap.pose.position.y, host_mocap.pose.position.z);
             ROS_INFO("setpoint: %.2f, %.2f, %.2f, %.2f", vir1.x, vir1.y, vir1.z, vir1.roll/pi*180);
+            ROS_INFO("target: %.3f, %.3f, %.3f",x(3),x(4),x(5));
             err_ux_pre = 0;
             err_uy_pre = 0;
             err_uz_pre = 0;
@@ -1366,7 +1387,14 @@ int main(int argc, char **argv)
             err_uz_sum = 0;
             err_uroll_sum = 0;
 
-            follow(vir1,host_mocap,&vs,0,0);
+            if(pbvs_mode == true)
+            {
+                pbvs_ukf(x,host_mocap,&vs,desired_relative_heading,desired_distance);
+                ROS_INFO("pbvs");
+            }
+            else
+                follow(vir1,host_mocap,&vs,0,0);
+
             local_vel_pub.publish(vs);
             if(box.data[0] >= 0.8)
                 ROS_INFO("target detected");
@@ -1404,10 +1432,10 @@ int main(int argc, char **argv)
         car_pose_pre = car_pose;
 
         measure_value.cmode.data = ibvs_mode;
-        measure_value.feature_1.data = (host_mocap.pose.position.x - car_pose.pose.position.x)/(host_mocap.pose.position.y - car_pose.pose.position.y);
-        measure_value.feature_2.data = (host_mocap.pose.position.z - car_pose.pose.position.z)/(host_mocap.pose.position.y - car_pose.pose.position.y);
-        measure_value.feature_3.data = (host_mocap.pose.position.y - car_pose.pose.position.y);
-        measure_value.feature_4.data = -1;
+        measure_value.feature_1.data = desired_relative_heading/pi*180;
+        measure_value.feature_2.data = atan2((host_mocap.pose.position.y-car_pose.pose.position.y),(host_mocap.pose.position.x-car_pose.pose.position.x))/pi*180;
+        measure_value.feature_3.data = atan2((host_mocap.pose.position.y-x(4)),(host_mocap.pose.position.x-x(3)))/pi*180;
+        measure_value.feature_4.data = car_angle.data/pi*180;
         measure_value.target_pose.x = car_pose.pose.position.x;
         measure_value.target_pose.y = car_pose.pose.position.y;
         measure_value.target_pose.z = car_pose.pose.position.z + 0.03;
@@ -1419,7 +1447,7 @@ int main(int argc, char **argv)
         estimate_value.feature_2.data = x(1);
         estimate_value.feature_3.data = x(2);                            //depth = 1/x(2)
         estimate_value.feature_4.data = x(9);
-        estimate_value.target_pose.x = x(3) + 0.25;
+        estimate_value.target_pose.x = x(3);
         estimate_value.target_pose.y = x(4);
         estimate_value.target_pose.z = x(5);
         estimate_value.target_vel.x = x(6);
